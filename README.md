@@ -15,6 +15,22 @@ python -m venv .venv
 .venv/bin/python -m pytest -q
 ```
 
-## Next step (Phase 4.1+)
-Implement the actual LiveKit Agents runtime entrypoint (and optional integration tests) once we agree on the `livekit-agents[...]` dependency set and the provider choices (STT/LLM/TTS).
+## Run the agent (Phase 4.1+)
+Environment variables:
+- `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`
+- `BACKEND_TOOLS_URL` (defaults to the dev URL in `squad/assistants/*.json`)
+- `DEEPGRAM_API_KEY`
+- `CARTESIA_API_KEY` (optional: `CARTESIA_VOICE_ID`, `CARTESIA_TTS_MODEL`)
+- `GOOGLE_API_KEY` (optional: `GOOGLE_LLM_MODEL`, defaults to `gemini-2.5-flash`)
 
+Run in console mode (local, no telephony):
+```bash
+python -m livekit_agent.agent console
+```
+
+Run in dev mode (connects to LiveKit and joins dispatched rooms):
+```bash
+python -m livekit_agent.agent dev
+```
+
+Note: if `GOOGLE_API_KEY` is not set, the agent falls back to a simple `then_action` string parser (useful for local testing, not production-grade).
