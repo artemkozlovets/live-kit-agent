@@ -9,6 +9,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from dotenv import load_dotenv
+
+# Load `.env` early so CLI options (LIVEKIT_*) and NUM_CPUS are available during
+# `livekit.agents` import and initialization.
+load_dotenv()
 from livekit import rtc
 from livekit.agents import Agent, AgentServer, AgentSession, ChatContext, JobContext, JobProcess, cli, function_tool
 from livekit.plugins import cartesia, deepgram, google, silero
