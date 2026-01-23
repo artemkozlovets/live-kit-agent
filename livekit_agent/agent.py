@@ -390,12 +390,19 @@ async def entrypoint(ctx: JobContext) -> None:
     llm_model = os.getenv("GOOGLE_LLM_MODEL", "gemini-2.5-flash")
     tool_llm = google.LLM(model=llm_model) if os.getenv("GOOGLE_API_KEY") else None
 
-    stt_model = os.getenv("DEEPGRAM_STT_MODEL", "nova-2")
+    stt_model = os.getenv("DEEPGRAM_STT_MODEL", "flux-general-en")
+    eager_eot_threshold_raw = os.getenv("DEEPGRAM_EAGER_EOT_THRESHOLD", "0.4")
+    try:
+        eager_eot_threshold = float(eager_eot_threshold_raw)
+    except ValueError:
+        eager_eot_threshold = 0.4
     tts_model = os.getenv("CARTESIA_TTS_MODEL", "sonic-3")
     tts_voice = os.getenv("CARTESIA_VOICE_ID", "794f9389-aac1-45b6-b726-9d9369183238")
 
     session = AgentSession(
-        stt=deepgram.STTv2(model=stt_model, language="en"),
+        # Use Deepgram's STT-based endpointing (closest parity with Vapi's current settings).
+        turn_detection="stt",
+        stt=deepgram.STTv2(model=stt_model, eager_eot_threshold=eager_eot_threshold),
         tts=cartesia.TTS(model=tts_model, voice=tts_voice),
         vad=ctx.proc.userdata["vad"],
     )

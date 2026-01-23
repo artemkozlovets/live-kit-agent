@@ -34,8 +34,14 @@ async def test_agent_preflight_then_business_turn_text_mode() -> None:
 
         if tool_name == "validate_phone":
             phone = tool_args.get("phone_number")
-            result_obj = {"valid": True, "formatted": phone}
+            call_phone = payload["message"]["call"]["customer"]["number"]
+            assert call_phone == phone  # first send is unnormalized, right after confirmation
+            formatted = phone
+            if isinstance(phone, str) and phone.strip() and not phone.startswith("+"):
+                formatted = f"+1{phone}"
+            result_obj = {"valid": True, "formatted": formatted}
         elif tool_name == "check_customer":
+            assert payload["message"]["call"]["customer"]["number"] == "+15551234567"
             result_obj = {"found": True, "next_action": "Proceed. Call handoff_to_ServiceCollection."}
         elif tool_name == "get_case_status":
             result_obj = {
@@ -73,7 +79,7 @@ async def test_agent_preflight_then_business_turn_text_mode() -> None:
         await session.start(agent)
 
         # Turn 1: provide callback number; should validate + check customer before allowing get_case_status.
-        await agent.on_user_turn_completed(ChatContext(), _Msg("+15551234567"))
+        await agent.on_user_turn_completed(ChatContext(), _Msg("5551234567"))
         assert "validate_phone" in calls
         assert "check_customer" in calls
         assert "get_case_status" not in calls

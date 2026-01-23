@@ -20,6 +20,8 @@ Environment variables:
 - `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`
 - `BACKEND_TOOLS_URL` (defaults to the dev URL in `squad/assistants/*.json`)
 - `DEEPGRAM_API_KEY`
+- `DEEPGRAM_STT_MODEL` (optional, defaults to `flux-general-en`)
+- `DEEPGRAM_EAGER_EOT_THRESHOLD` (optional, defaults to `0.4`)
 - `CARTESIA_API_KEY` (optional: `CARTESIA_VOICE_ID`, `CARTESIA_TTS_MODEL`)
 - `GOOGLE_API_KEY` (optional: `GOOGLE_LLM_MODEL`, defaults to `gemini-2.5-flash`)
 

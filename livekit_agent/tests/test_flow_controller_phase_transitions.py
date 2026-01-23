@@ -2,7 +2,7 @@ from livekit_agent.flow_controller import FlowController, Phase, SpeakAction, To
 
 
 def test_no_get_case_status_call_before_callback_number_confirmed() -> None:
-    controller = FlowController(sip_phone_number="+15551230000")
+    controller = FlowController(sip_phone_number="5551230000")
 
     start_actions = controller.start()
     assert len(start_actions) == 1
@@ -11,7 +11,7 @@ def test_no_get_case_status_call_before_callback_number_confirmed() -> None:
 
     actions = controller.on_user_callback_confirmation(confirmed=True)
     assert actions == [
-        ToolAction(type="tool", name="validate_phone", arguments={"phone_number": "+15551230000"})
+        ToolAction(type="tool", name="validate_phone", arguments={"phone_number": "5551230000"})
     ]
     assert controller.can_call_get_case_status is False
 
@@ -19,6 +19,7 @@ def test_no_get_case_status_call_before_callback_number_confirmed() -> None:
         tool_name="validate_phone",
         result={"valid": True, "formatted": "+15551230000"},
     )
+    assert controller.confirmed_callback_number == "+15551230000"
     assert actions == [
         ToolAction(type="tool", name="check_customer", arguments={"phone_number": "+15551230000"})
     ]
@@ -141,4 +142,3 @@ def test_response_mode_ordering_speak_first_vs_tool_first_vs_update_first() -> N
     assert [a.type for a in actions] == ["tool", "speak"]
     assert isinstance(actions[1], SpeakAction)
     assert actions[1].text == "Got it."
-

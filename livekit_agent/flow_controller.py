@@ -160,6 +160,8 @@ class FlowController:
         if is_valid is True:
             formatted = result.get("formatted")
             if isinstance(formatted, str) and formatted.strip():
+                # After confirmation, normalize (E.164) and use the normalized value consistently.
+                self.confirmed_callback_number = formatted
                 self.normalized_callback_number = formatted
             elif self.confirmed_callback_number:
                 self.normalized_callback_number = self.confirmed_callback_number
@@ -226,4 +228,3 @@ class FlowController:
             self.phase = Phase.SERVICE_COLLECTION
         elif "handoff_to_CustomerIntake" in text:
             self.phase = Phase.CUSTOMER_INTAKE
-
