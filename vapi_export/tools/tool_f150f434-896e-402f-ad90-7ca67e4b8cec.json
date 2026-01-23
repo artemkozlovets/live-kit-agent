@@ -1,0 +1,24 @@
+{
+  "messages": [
+    {
+      "content": "",
+      "type": "request-start"
+    }
+  ],
+  "server": {
+    "url": "https://call-agent-development.up.railway.app/vapi/tools"
+  },
+  "id": "f150f434-896e-402f-ad90-7ca67e4b8cec",
+  "orgId": "24ad0433-8074-4bbf-97ef-f1c8f79ce486",
+  "function": {
+    "name": "handoff_to_Booking",
+    "description": "Transfer to Booking assistant when all vehicle and service info is collected and confirmed.",
+    "parameters": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  "createdAt": "2026-01-16T03:13:38Z",
+  "updatedAt": "2026-01-16T03:13:38Z",
+  "type": "function"
+}

@@ -1,0 +1,24 @@
+{
+  "messages": [
+    {
+      "content": "",
+      "type": "request-start"
+    }
+  ],
+  "server": {
+    "url": "https://call-agent-development.up.railway.app/vapi/tools"
+  },
+  "id": "8b0cad8d-4e5b-4557-bb23-3ee33d027f9e",
+  "orgId": "24ad0433-8074-4bbf-97ef-f1c8f79ce486",
+  "function": {
+    "name": "handoff_to_CustomerIntake",
+    "description": "Transfer to CustomerIntake assistant when customer needs to correct or update contact information.",
+    "parameters": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  "createdAt": "2026-01-16T03:13:38Z",
+  "updatedAt": "2026-01-16T03:13:38Z",
+  "type": "function"
+}

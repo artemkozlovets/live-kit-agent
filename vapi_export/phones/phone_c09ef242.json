@@ -1,0 +1,12 @@
+{
+  "id": "c09ef242-7502-498e-bc9a-5f88ef8894b9",
+  "orgId": "24ad0433-8074-4bbf-97ef-f1c8f79ce486",
+  "status": "active",
+  "number": "+19519008210",
+  "server": {
+    "url": "https://call-agent-development.up.railway.app/vapi/assistant-request"
+  },
+  "createdAt": "2026-01-02T01:14:13Z",
+  "updatedAt": "2026-01-18T01:06:10Z",
+  "provider": "vapi"
+}

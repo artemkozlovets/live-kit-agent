@@ -1,0 +1,2349 @@
+{
+  "nodes": [
+    {
+      "prompt": "You are a dispatcher AI Agent happily greeting a caller.",
+      "name": "introduction",
+      "isStart": true,
+      "metadata": {
+        "position": {
+          "x": -400,
+          "y": -100
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "tool": {
+        "messages": [
+          {
+            "blocking": false,
+            "type": "request-start"
+          }
+        ],
+        "method": "POST",
+        "name": "check_customer_in_database",
+        "url": "https://servicebay.app.n8n.cloud/webhook/inbound",
+        "body": {
+          "type": "object",
+          "properties": {
+            "phone_number": {
+              "default": "",
+              "description": "{{customer.number}}",
+              "type": "string"
+            }
+          },
+          "required": [
+            "phone_number"
+          ]
+        },
+        "headers": {
+          "type": "object",
+          "properties": {
+            "Content-Type": {
+              "type": "string",
+              "value": "application/json"
+            }
+          }
+        },
+        "variableExtractionPlan": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "customer_exists": {
+                "description": "customer_exists",
+                "type": "string"
+              },
+              "customer_id": {
+                "description": "customer_id",
+                "type": "string"
+              },
+              "customer_name": {
+                "description": "customer_name",
+                "type": "string"
+              }
+            },
+            "required": [
+              "customer_id",
+              "customer_exists",
+              "customer_name"
+            ]
+          }
+        },
+        "function": {
+          "name": "api_request_tool",
+          "description": "API request tool",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "apiRequest"
+      },
+      "name": "check_customer_in_database",
+      "metadata": {
+        "position": {
+          "x": 1196.4657392579568,
+          "y": 1485.30096692716
+        }
+      },
+      "type": "tool"
+    },
+    {
+      "model": {
+        "model": "gpt-4.1",
+        "temperature": 0.3,
+        "maxTokens": 250,
+        "provider": "openai"
+      },
+      "prompt": "Politely greet the caller and ask what they need help or servicing with",
+      "name": "Greetings Existing Customer",
+      "metadata": {
+        "position": {
+          "x": 19370.571090698242,
+          "y": 1065.1330261230469
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "tool": {
+        "messages": [
+          {
+            "blocking": false,
+            "type": "request-start"
+          }
+        ],
+        "method": "POST",
+        "name": "check_vin",
+        "url": "https://servicebay.app.n8n.cloud/webhook/checkVin",
+        "body": {
+          "type": "object",
+          "properties": {
+            "unit_nickname": {
+              "default": "",
+              "description": "The vehicle's unit nickname.",
+              "type": "string"
+            },
+            "unit_number": {
+              "default": "",
+              "description": "The vehicle's unit number.",
+              "type": "string"
+            },
+            "vin_number": {
+              "default": "",
+              "description": "The vehicle's 17-digit Vehicle Identification Number.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "vin_number",
+            "unit_nickname",
+            "unit_number"
+          ]
+        },
+        "headers": {
+          "type": "object",
+          "properties": {
+            "Content-Type": {
+              "type": "string",
+              "value": "application/json"
+            }
+          }
+        },
+        "variableExtractionPlan": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "is_in_database": {
+                "description": "is_in_database",
+                "type": "boolean"
+              },
+              "unit_number": {
+                "description": "",
+                "type": "string"
+              },
+              "vin_number": {
+                "description": "vin_number",
+                "type": "string"
+              }
+            },
+            "required": [
+              "vin_number",
+              "is_in_database",
+              "unit_number"
+            ]
+          }
+        },
+        "function": {
+          "name": "api_request_tool",
+          "description": "API request tool",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "apiRequest"
+      },
+      "name": "check_vin",
+      "metadata": {
+        "position": {
+          "x": 21205.974227905273,
+          "y": 1061.6330261230469
+        }
+      },
+      "type": "tool"
+    },
+    {
+      "tool": {
+        "messages": [
+          {
+            "blocking": false,
+            "type": "request-start"
+          }
+        ],
+        "method": "POST",
+        "name": "store_unit",
+        "url": "https://servicebay.app.n8n.cloud/webhook/storeUnit",
+        "body": {
+          "type": "object",
+          "properties": {
+            "chassis_type": {
+              "default": "",
+              "description": "The type of vehicle chassis (e.g., truck, trailer). Chassis classification.",
+              "type": "string"
+            },
+            "company_name": {
+              "default": "",
+              "description": "The company name of the caller.",
+              "type": "string"
+            },
+            "email_address": {
+              "default": "",
+              "description": "The email address of the caller.",
+              "type": "string"
+            },
+            "first_name": {
+              "default": "",
+              "description": "The first name of the caller.",
+              "type": "string"
+            },
+            "last_name": {
+              "default": "",
+              "description": "The last name of the caller.",
+              "type": "string"
+            },
+            "license_plate_number": {
+              "default": "",
+              "description": "The vehicle's license plate number.",
+              "type": "string"
+            },
+            "license_plate_state": {
+              "default": "",
+              "description": "The state of issuance for the license plate (e.g., 'CA').",
+              "type": "string"
+            },
+            "phone_number": {
+              "default": "",
+              "description": "The caller's phone number",
+              "type": "string"
+            },
+            "unit_nickname": {
+              "default": "",
+              "description": "Friendly name/identifier for the unit",
+              "type": "string"
+            },
+            "unit_number": {
+              "default": "",
+              "description": "The new unit number to assign to the vehicle.",
+              "type": "string"
+            },
+            "unit_subtype": {
+              "default": "",
+              "description": "The specific subtype of the unit (e.g., dry van, reefer). Additional unit categorization.",
+              "type": "string"
+            },
+            "vin_number": {
+              "default": "",
+              "description": "The vehicle's 17-digit Vehicle Identification Number.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "chassis_type",
+            "license_plate_state",
+            "email_address",
+            "unit_number",
+            "company_name",
+            "vin_number",
+            "last_name",
+            "unit_subtype",
+            "phone_number",
+            "first_name",
+            "unit_nickname",
+            "license_plate_number"
+          ]
+        },
+        "headers": {
+          "type": "object",
+          "properties": {
+            "Content-Type": {
+              "type": "string",
+              "value": "application/json"
+            }
+          }
+        },
+        "variableExtractionPlan": {
+          "schema": {
+            "type": "object"
+          }
+        },
+        "function": {
+          "name": "api_request_tool",
+          "description": "API request tool",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "apiRequest"
+      },
+      "name": "store_unit",
+      "metadata": {
+        "position": {
+          "x": 28547.582107543945,
+          "y": 187.21885681152344
+        }
+      },
+      "type": "tool"
+    },
+    {
+      "tool": {
+        "messages": [
+          {
+            "blocking": false,
+            "type": "request-start"
+          }
+        ],
+        "method": "POST",
+        "name": "store_so",
+        "url": "https://servicebay.app.n8n.cloud/webhook/storeServiceOrder",
+        "body": {
+          "type": "object",
+          "properties": {
+            "additional_info": {
+              "default": "",
+              "description": "The additional information or instructions that the caller provided on how to get the unit.",
+              "type": "string"
+            },
+            "chassisType": {
+              "default": "",
+              "description": "The type of vehicle chassis (e.g., truck, trailer).",
+              "type": "string"
+            },
+            "city": {
+              "default": "",
+              "description": "The customer's city.",
+              "type": "string"
+            },
+            "company_name": {
+              "default": "",
+              "description": "The customer's company name.",
+              "type": "string"
+            },
+            "contact_name": {
+              "default": "",
+              "description": "The primary contact person's full name.",
+              "type": "string"
+            },
+            "country": {
+              "default": "",
+              "description": "The customer's country.",
+              "type": "string"
+            },
+            "customer_id": {
+              "default": "",
+              "description": "The existing customer's ID to store in the units table",
+              "type": "string"
+            },
+            "customer_position": {
+              "default": "",
+              "description": "The position of customer in their company",
+              "type": "string"
+            },
+            "expected_completion": {
+              "default": "",
+              "description": "The expected completion time for the service.",
+              "type": "string"
+            },
+            "first_name": {
+              "default": "",
+              "description": "The customer's first name.",
+              "type": "string"
+            },
+            "is_existing_customer_w_new_unit": {
+              "default": "",
+              "description": "If caller is an existing customer and registered a new unit, then true, otherwise it is false.",
+              "type": "string"
+            },
+            "is_existing_customer_w_unit": {
+              "default": "",
+              "description": "If the caller is an existing customer but registered a new unit, then true otherwise it is false.",
+              "type": "string"
+            },
+            "is_new_customer": {
+              "default": "",
+              "description": "If caller is a new customer, then true, otherwise it is false.",
+              "type": "boolean"
+            },
+            "last_name": {
+              "default": "",
+              "description": "The customer's last name.",
+              "type": "string"
+            },
+            "licensePlateNumber": {
+              "default": "",
+              "description": "The vehicle's license plate number.",
+              "type": "string"
+            },
+            "licensePlateState": {
+              "default": "",
+              "description": "The state of issuance for the license plate (e.g., 'CA').",
+              "type": "string"
+            },
+            "marketing_source": {
+              "default": "",
+              "description": "How the customer hear about our service. (E.g. Google, Friend)",
+              "type": "string"
+            },
+            "model": {
+              "default": "",
+              "description": "The model of the vehicle.",
+              "type": "string"
+            },
+            "phone_number": {
+              "default": "",
+              "description": "The customer's primary phone number.",
+              "type": "string"
+            },
+            "postalCode": {
+              "default": "",
+              "description": "The customer's postal code.",
+              "type": "string"
+            },
+            "service_complaint": {
+              "default": "",
+              "description": "The customer's description of the issue or service request.",
+              "type": "string"
+            },
+            "service_location": {
+              "default": "",
+              "description": "The full address where the vehicle is currently located.",
+              "type": "string"
+            },
+            "start_time": {
+              "default": "",
+              "description": "The agreed-upon start time for the service.",
+              "type": "string"
+            },
+            "state": {
+              "default": "",
+              "description": "The customer's state.",
+              "type": "string"
+            },
+            "streetAddress": {
+              "default": "",
+              "description": "The customer's street address.",
+              "type": "string"
+            },
+            "technician_skill_needed": {
+              "default": "",
+              "description": "The needed skill of a technician to fix the issue.",
+              "type": "string"
+            },
+            "unitSubType": {
+              "default": "",
+              "description": "The specific subtype of the unit (e.g., dry van, reefer).",
+              "type": "string"
+            },
+            "unit_id": {
+              "default": "",
+              "description": "The NEW OR EXISTING customer's unit (vehicle) ID to store in the service_orders table",
+              "type": "string"
+            },
+            "unit_name": {
+              "default": "",
+              "description": "The customer's email address for contact.",
+              "type": "string"
+            },
+            "unit_nickname": {
+              "default": "",
+              "description": "A friendly name or nickname for the vehicle.",
+              "type": "string"
+            },
+            "unit_number": {
+              "default": "",
+              "description": "The new unit number to assign to the vehicle.",
+              "type": "string"
+            },
+            "vin_number": {
+              "default": "",
+              "description": "The vehicle's 17-digit Vehicle Identification Number.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "country",
+            "service_location",
+            "city",
+            "expected_completion",
+            "postalCode",
+            "marketing_source",
+            "licensePlateNumber",
+            "unit_number",
+            "vin_number",
+            "technician_skill_needed",
+            "model",
+            "state",
+            "is_existing_customer_w_unit",
+            "unit_id",
+            "first_name",
+            "contact_name",
+            "last_name",
+            "is_new_customer",
+            "unit_nickname",
+            "customer_position",
+            "unitSubType",
+            "start_time",
+            "chassisType",
+            "unit_name",
+            "streetAddress",
+            "additional_info",
+            "service_complaint",
+            "company_name",
+            "licensePlateState",
+            "phone_number",
+            "customer_id",
+            "is_existing_customer_w_new_unit"
+          ]
+        },
+        "headers": {
+          "type": "object",
+          "properties": {
+            "Content-Type": {
+              "type": "string",
+              "value": "application/json"
+            }
+          }
+        },
+        "variableExtractionPlan": {
+          "schema": {
+            "type": "object"
+          }
+        },
+        "function": {
+          "name": "api_request_tool",
+          "description": "API request tool",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "apiRequest"
+      },
+      "name": "store_so",
+      "metadata": {
+        "position": {
+          "x": 29465.28289794922,
+          "y": 187.21885681152344
+        }
+      },
+      "type": "tool"
+    },
+    {
+      "tool": {
+        "messages": [
+          {
+            "blocking": false,
+            "type": "request-start"
+          }
+        ],
+        "method": "POST",
+        "name": "check_customer_by_name",
+        "url": "https://servicebay.app.n8n.cloud/webhook/checkCustomerByName",
+        "body": {
+          "type": "object",
+          "properties": {
+            "company_name": {
+              "default": "",
+              "description": "The customer's company name.",
+              "type": "string"
+            },
+            "customer_position": {
+              "default": "",
+              "description": "The customer's position in the company (ex. Fleet Manager).",
+              "type": "string"
+            },
+            "first_name": {
+              "default": "",
+              "description": "The customer's first name.",
+              "type": "string"
+            },
+            "last_name": {
+              "default": "",
+              "description": "The customer's last name.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "last_name",
+            "first_name",
+            "company_name",
+            "customer_position"
+          ]
+        },
+        "headers": {
+          "type": "object",
+          "properties": {
+            "Content-Type": {
+              "type": "string",
+              "value": "application/json"
+            }
+          }
+        },
+        "variableExtractionPlan": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "company_name": {
+                "description": "company_name",
+                "type": "string"
+              },
+              "customer_exists": {
+                "description": "customer_exists",
+                "type": "string"
+              },
+              "customer_id": {
+                "description": "customer_id",
+                "type": "string"
+              },
+              "customer_name": {
+                "description": "customer_name",
+                "type": "string"
+              },
+              "customer_position": {
+                "description": "customer_position",
+                "type": "string"
+              },
+              "email": {
+                "description": "email",
+                "type": "string"
+              },
+              "phone": {
+                "description": "phone",
+                "type": "string"
+              }
+            },
+            "required": [
+              "customer_exists",
+              "phone",
+              "company_name",
+              "customer_name",
+              "customer_id",
+              "email",
+              "customer_position"
+            ]
+          }
+        },
+        "function": {
+          "name": "api_request_tool",
+          "description": "API request tool",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "apiRequest"
+      },
+      "name": "check_customer_by_name",
+      "metadata": {
+        "position": {
+          "x": 3769.655075073242,
+          "y": 1874.5359115600586
+        }
+      },
+      "type": "tool"
+    },
+    {
+      "tool": {
+        "messages": [
+          {
+            "blocking": false,
+            "type": "request-start"
+          }
+        ],
+        "method": "POST",
+        "url": "https://servicebay.app.n8n.cloud/webhook-test/updateNumber",
+        "body": {
+          "type": "object",
+          "properties": {
+            "first_name": {
+              "default": "",
+              "description": "First Name of the caller",
+              "type": "string"
+            },
+            "last_name": {
+              "default": "",
+              "description": "Last Name of the caller",
+              "type": "string"
+            },
+            "new_phone_number": {
+              "default": "",
+              "description": "Suggested phone number of the caller.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "first_name",
+            "last_name",
+            "new_phone_number"
+          ]
+        },
+        "headers": {
+          "type": "object",
+          "properties": {
+            "Content-Type": {
+              "type": "string",
+              "value": "application/json"
+            }
+          }
+        },
+        "variableExtractionPlan": {
+          "schema": {
+            "type": "object"
+          }
+        },
+        "function": {
+          "name": "api_request_tool",
+          "description": "API request tool",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "apiRequest"
+      },
+      "name": "update_customer_number",
+      "metadata": {
+        "position": {
+          "x": 19370.571090698242,
+          "y": 1928.5359115600586
+        }
+      },
+      "type": "tool"
+    },
+    {
+      "tool": {
+        "messages": [
+          {
+            "blocking": false,
+            "type": "request-start"
+          }
+        ],
+        "method": "POST",
+        "url": "https://servicebay.app.n8n.cloud/webhook/newCustomer",
+        "body": {
+          "type": "object",
+          "properties": {
+            "city": {
+              "default": "",
+              "description": "The customer's city.",
+              "type": "string"
+            },
+            "company_name": {
+              "default": "",
+              "description": "The customer's company name.",
+              "type": "string"
+            },
+            "country": {
+              "default": "",
+              "description": "The customer's country.",
+              "type": "string"
+            },
+            "customer_position": {
+              "default": "",
+              "description": "The customer's position at their company. Specific job title or position for validation.",
+              "type": "string"
+            },
+            "email_address": {
+              "default": "",
+              "description": "The customer's email address for contact.",
+              "type": "string"
+            },
+            "first_name": {
+              "default": "",
+              "description": "The customer's first name.",
+              "type": "string"
+            },
+            "last_name": {
+              "default": "",
+              "description": "The customer's last name.",
+              "type": "string"
+            },
+            "marketing_source": {
+              "default": "",
+              "description": "How the customer heard about our service. (E.g. Google, Friend). Lead/ customer acquisition channel.",
+              "type": "string"
+            },
+            "phone_number": {
+              "default": "",
+              "description": "The customer's primary phone number.",
+              "type": "string"
+            },
+            "postalCode": {
+              "default": "",
+              "description": "The customer's ZIP or postal code.",
+              "type": "string"
+            },
+            "state": {
+              "default": "",
+              "description": "The customer's state or province.",
+              "type": "string"
+            },
+            "streetAddress": {
+              "default": "",
+              "description": "The customer's street address.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "country",
+            "email_address",
+            "streetAddress",
+            "city",
+            "company_name",
+            "postalCode",
+            "last_name",
+            "phone_number",
+            "marketing_source",
+            "state",
+            "first_name",
+            "customer_position"
+          ]
+        },
+        "headers": {
+          "type": "object",
+          "properties": {
+            "Content-Type": {
+              "type": "string",
+              "value": "application/json"
+            }
+          }
+        },
+        "variableExtractionPlan": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "customer_id": {
+                "description": "customer_id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "customer_id"
+            ]
+          }
+        },
+        "function": {
+          "name": "api_request_tool",
+          "description": "API request tool",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "apiRequest"
+      },
+      "name": "store_customer",
+      "metadata": {
+        "position": {
+          "x": 16617.469131469727,
+          "y": 3628.2213134765625
+        }
+      },
+      "type": "tool"
+    },
+    {
+      "tool": {
+        "messages": [
+          {
+            "blocking": false,
+            "type": "request-start"
+          }
+        ],
+        "method": "POST",
+        "url": "https://servicebay.app.n8n.cloud/webhook/storeUnit",
+        "body": {
+          "type": "object",
+          "properties": {
+            "chassis_type": {
+              "default": "",
+              "description": "The type of vehicle chassis (e.g., truck, trailer).",
+              "type": "string"
+            },
+            "company_name": {
+              "default": "",
+              "description": "The company name of the caller.",
+              "type": "string"
+            },
+            "email_address": {
+              "default": "",
+              "description": "The email address of the caller.",
+              "type": "string"
+            },
+            "first_name": {
+              "default": "",
+              "description": "The first name of the caller.",
+              "type": "string"
+            },
+            "last_name": {
+              "default": "",
+              "description": "The last name of the caller.",
+              "type": "string"
+            },
+            "license_plate_number": {
+              "default": "",
+              "description": "The vehicle's license plate number.",
+              "type": "string"
+            },
+            "license_plate_state": {
+              "default": "",
+              "description": "The state of issuance for the license plate (e.g., 'CA').",
+              "type": "string"
+            },
+            "unit_nickname": {
+              "default": "",
+              "description": "A friendly name or nickname for the vehicle.",
+              "type": "string"
+            },
+            "unit_number": {
+              "default": "",
+              "description": "The new unit number to assign to the vehicle.",
+              "type": "string"
+            },
+            "unit_subtype": {
+              "default": "",
+              "description": "The specific subtype of the unit (e.g., dry van, reefer).",
+              "type": "string"
+            },
+            "vin_number": {
+              "default": "",
+              "description": "The vehicle's 17-digit Vehicle Identification Number.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "license_plate_state",
+            "chassis_type",
+            "email_address",
+            "unit_number",
+            "company_name",
+            "vin_number",
+            "last_name",
+            "unit_subtype",
+            "first_name",
+            "unit_nickname",
+            "license_plate_number"
+          ]
+        },
+        "headers": {
+          "type": "object",
+          "properties": {
+            "Content-Type": {
+              "type": "string",
+              "value": "application/json"
+            }
+          }
+        },
+        "variableExtractionPlan": {
+          "schema": {
+            "type": "object"
+          }
+        },
+        "function": {
+          "name": "api_request_tool",
+          "description": "API request tool",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "apiRequest"
+      },
+      "name": "store_unit_new_customer",
+      "metadata": {
+        "position": {
+          "x": 17535.16990661621,
+          "y": 3654.2213134765625
+        }
+      },
+      "type": "tool"
+    },
+    {
+      "tool": {
+        "messages": [
+          {
+            "blocking": false,
+            "type": "request-start"
+          }
+        ],
+        "method": "POST",
+        "name": "vin_validate",
+        "url": "https://servicebay.app.n8n.cloud/webhook/validateVIN",
+        "body": {
+          "type": "object",
+          "properties": {
+            "vin_number": {
+              "default": "",
+              "description": "The vehicle's 17-digit Vehicle Identification Number.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "vin_number"
+          ]
+        },
+        "headers": {
+          "type": "object",
+          "properties": {
+            "Content-Type": {
+              "type": "string",
+              "value": "application/json"
+            }
+          }
+        },
+        "variableExtractionPlan": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "is_vin_valid": {
+                "description": "is_vin_valid",
+                "type": "string"
+              },
+              "vin_number": {
+                "description": "vin_number",
+                "type": "string"
+              }
+            },
+            "required": [
+              "is_vin_valid",
+              "vin_number"
+            ]
+          }
+        },
+        "function": {
+          "name": "api_request_tool",
+          "description": "API request tool",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "apiRequest"
+      },
+      "name": "vin_validate",
+      "metadata": {
+        "position": {
+          "x": 23959.076599121094,
+          "y": 644.4377136230469
+        }
+      },
+      "type": "tool"
+    },
+    {
+      "tool": {
+        "messages": [
+          {
+            "blocking": false,
+            "type": "request-start"
+          }
+        ],
+        "method": "POST",
+        "name": "phone_verify",
+        "url": "https://servicebay.app.n8n.cloud/webhook/phoneVerify",
+        "body": {
+          "type": "object",
+          "properties": {
+            "phone_number": {
+              "default": "",
+              "description": "To be provided by the caller",
+              "type": "string"
+            }
+          },
+          "required": [
+            "phone_number"
+          ]
+        },
+        "headers": {
+          "type": "object",
+          "properties": {
+            "Content-Type": {
+              "type": "string",
+              "value": "application/json"
+            }
+          }
+        },
+        "variableExtractionPlan": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "is_phone_valid": {
+                "description": "is_phone_valid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "is_phone_valid"
+            ]
+          }
+        },
+        "function": {
+          "name": "api_request_tool",
+          "description": "API request tool",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "apiRequest"
+      },
+      "name": "phone_verify",
+      "metadata": {
+        "position": {
+          "x": 6522.757797241211,
+          "y": 4101.51203918457
+        }
+      },
+      "type": "tool"
+    },
+    {
+      "model": {
+        "model": "gpt-4.1",
+        "temperature": 0.3,
+        "maxTokens": 250,
+        "provider": "openai"
+      },
+      "prompt": "Take note of the previous responses of the caller. If they have already answered some of the details here, then you can skip or clarify this, but don't ask them again like you don't know.\n\n- Make sure that the caller answer AT LEAST ONE of these information:\n\n1. VIN (Vehicle Identification Number) – Record the VIN when given.\n\n2. Unit Number– Record the assigned unit number.\n\n3. Unit Nickname- Record the Unit Nickname that the caller mentions.\n\nNote:\n- You only need to get one of the three information.\n- The caller doesn't need to provide all of the information.\n\nExtract Variables [Global Listener]:\n1. VIN (Vehicle Identification Number) -\u003e {{vin_number}}\n2. Unit Number -\u003e {{unit_number}}\n2. Unit Nickname -\u003e {{unit_nickname}}",
+      "name": "[Existing] Collect Unit Information",
+      "metadata": {
+        "position": {
+          "x": 20288.272659301758,
+          "y": 1023.1330261230469
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "model": {
+        "model": "gpt-4.1",
+        "temperature": 0.3,
+        "maxTokens": 250,
+        "provider": "openai"
+      },
+      "prompt": "Take note of the previous responses of the caller. If they have already answered some of the details here, then you have to clarify it, but don't ask them again like you don't know.\n\nThank the user for their patience before proceeding. Then, gather details about the following information. Let them answer before proceeding to the next question:\n\n1. Service Complaint (Mandatory)– Ask the user what issue or problem they are experiencing with the unit.\n\n   - Example: “Can you please tell me what kind of trouble or issue you're having with the unit?”\n\n2. Service Location (Mandatory)– Ask where the unit is currently located or where the service needs to be performed.\n\n   - Example: “May I know the location of the unit that needs to be fixed?”\n\n3. Expected Completion (Mandatory)– Ask when they expect the service to be completed, using date and time format.\n\n   - Example: “When do you expect the service to be completed? Please include both the date and time.”\n\n4. Preferred Start Time (Mandatory)– Ask when they would like the service to begin, also in date and time format.\n\n   - Example: “When would you like us to start the service? Please provide the date and time.”\n\nExtract Variables [Global Listener]:\n1. Service Complaint -\u003e {{service_complaint}}\n2. Service Location -\u003e {{service_location}}\n3. Expected Completion -\u003e {{expected_completion}}\n4. Preferred Time Start -\u003e {{preferred_time_start}}\n\nNotes:\n- If any information is unclear, incomplete, or missing, politely ask for clarification.\n- Do not ask for any other information during this step.",
+      "name": "[Existing] Collect Service Order",
+      "metadata": {
+        "position": {
+          "x": 25794.4774017334,
+          "y": 108.71885681152344
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "model": {
+        "model": "gpt-4.1",
+        "temperature": 0.3,
+        "maxTokens": 250,
+        "provider": "openai"
+      },
+      "prompt": "Repeat all of the information gathered from the user for summary. \n\nUnit Details:\n1. VIN: {{vin_number}}\n2. Unit Number: {{unit_number}} with \n\nService Complaint Information:\n1. Service Complaint: {{service_complaint}}\n2. Service Location: {{service_location}}\n3. You like it back on: {{expected_completion}} and you like to start the service on: {{start_time}}\n\nNotes:\n- If any information is missing or incomplete, politely ask the user for the missing details and record them using the Extract Variable Tools node (E.g. Customer/Unit).\n\n- If the customer interrupts or updates any detail, acknowledge and confirm only the specific information they changed.",
+      "name": "Summary",
+      "metadata": {
+        "position": {
+          "x": 26712.178970336914,
+          "y": 108.71885681152344
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "model": {
+        "model": "gpt-4.1",
+        "temperature": 0.3,
+        "maxTokens": 250,
+        "provider": "openai"
+      },
+      "prompt": "Goal: Based on the {{service_complaint}}, pair it with the most appropriate technician skill that is required to finish the job.\n\nHere are the technician skills that you can reference when selecting the appropriate expertise based on the Service Order Complaint:\n1. Engine Systems\n2. Transmission \u0026 Clutch\n3. Driveline \u0026 Differentials\n4. Brake Systems\n5. Suspension \u0026 Steering\n6. Electrical Systems\n7. Electronic Controls \u0026 Diagnostics\n8. HVAC Systems\n9. Hydraulic \u0026 Pneumatic Systems\n10. Emission \u0026 Exhaust Systems\n11. Preventive Maintenance\n12. Tires \u0026 Wheels\n13. Fabrication \u0026 Welding\n14. Diagnostics \u0026 Testing Tools\n15. Shop Equipment Operation\n\nYour Script Should be something like: \"Hang tight while I pair your service complaint with the best technician skill!\"\n\nExtract Variables:\n1. Technician Skills-\u003e {{technician_skill_needed}}\n\nNote: DO NOT ask the caller about what technician skill do they prefer. You need to perform this on your own.",
+      "name": "Technician Skill Needed",
+      "metadata": {
+        "position": {
+          "x": 27629.88053894043,
+          "y": 118.71885681152344
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "model": {
+        "model": "gpt-4.1",
+        "temperature": 0.3,
+        "maxTokens": 250,
+        "provider": "openai"
+      },
+      "prompt": "# Goal\r\nYour primary goal is to inform the user that the unit they provided is not on file. Maintain a helpful and reassuring tone, then present them with two clear and simple options to resolve the situation.\r\n\r\n# Persona\r\nYou are Katerina: calm, professional, and empathetic. Avoid technical jargon or alarming language like \"error\" or \"invalid.\" Your tone should communicate that this is a minor issue we can easily fix together.\r\n\r\n# Script and Logic\r\nWhen this state is triggered, deliver the following message in a natural, conversational way:\r\n\r\n\"Hmm, I'm not seeing that specific vehicle in your records. No worries at all, we can sort this out quickly.\r\n\r\nIt's possible I misheard it. Would you like me to read back the number I have to double-check, or is this a new vehicle you'd like to add to your account?\"",
+      "name": "Unit Not in DB",
+      "metadata": {
+        "position": {
+          "x": 22123.67579650879,
+          "y": 1023.1330261230469
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "model": {
+        "model": "gpt-4.1",
+        "temperature": 0.3,
+        "maxTokens": 250,
+        "provider": "openai"
+      },
+      "prompt": "Ask the caller if they would like to provide a VIN for their vehicle. This is an optional information. The caller may or may not provide their VIN information.\r\n\r\nIf caller provided a VIN,\r\nExtract:\r\nVIN -\u003e {{variables. vin_number}}",
+      "name": "Existing Customer VIN Info",
+      "metadata": {
+        "position": {
+          "x": 23041.376586914062,
+          "y": 1063.1330261230469
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "model": {
+        "model": "gpt-4.1",
+        "temperature": 0.3,
+        "maxTokens": 250,
+        "provider": "openai"
+      },
+      "prompt": "Take note of the previous responses of the caller. If they have already answered some of the details here, then you have to clarify it, but don't ask them again like you don't know.\n\nAsk the caller about these information. The caller only needs to answer at least one of these but they can answer more than one:\n\n1. Unit Number – Record the assigned unit number.\n2. Unit Nickname – Ask if they have a nickname or label they use to identify the unit.\n3. License Plate (Number) - Ask for unit's license plate state and number.\n4. Chassis Type – Ask for the chassis type of the unit.\n\nExtract Variables [Global Listener]:\n1. Unit Number -\u003e {{unit_number}}\n2. Unit Nickname -\u003e {{unit_nickname}}\n3. License Plate (Number) -\u003e {{license_plate_number}}\n4. Chassis Type -\u003e {{chassis_type}}\n\nNotes:\n- All of the information is optional but the caller needs to answer at least one of them.",
+      "name": "New Unit Creation",
+      "metadata": {
+        "position": {
+          "x": 24876.776611328125,
+          "y": 591.9377136230469
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "model": {
+        "model": "gpt-4.1",
+        "temperature": 0.3,
+        "maxTokens": 250,
+        "provider": "openai"
+      },
+      "prompt": "Greet enthusiastically with: \"It seems you are new here, how can I help you today?\"",
+      "name": "New Customer Greeting",
+      "metadata": {
+        "position": {
+          "x": 1934.2531280517578,
+          "y": 1880.0359115600586
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "model": {
+        "model": "gpt-4.1",
+        "temperature": 0.3,
+        "maxTokens": 250,
+        "provider": "openai"
+      },
+      "prompt": "Goal: To politely ask for the customer's full name and company name. \n- Make sure to check if any of these fields are already given by the caller, if they are then do not ask them again but only confirm if what you got is correct.\n- Make sure to ask the caller about these details one by one. \n\nAsk them one by one for their:\n1. First Name\n2. Last Name\n3. Company Name\n4. Position in the company (if they are a manager or a driver, or other)\n\nExtract Variables [Global Listener]:\n1. First Name -\u003e {{first_name}}\n2. Last Name -\u003e {{last_name}}\n3. Company Name -\u003e {{company_name}}\n4. Position in the company -\u003e {{company_position}}\n\nScript: \"I'd be happy to look up your account. To make sure I pull up the right one, could you please tell me your full name, company you work for and your position on the company?\"",
+      "name": "conversation_1763380311780",
+      "metadata": {
+        "position": {
+          "x": 2851.954299926758,
+          "y": 1850.0359115600586
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "model": {
+        "model": "gpt-4.1",
+        "temperature": 0.3,
+        "maxTokens": 250,
+        "provider": "openai"
+      },
+      "prompt": "Goal: After successfully finding the existing customer's account, ask them if they would like to replace the old phone number on file with the new one they are calling from.\r\n\r\nScript: \"Great, I have your account pulled up now. I notice you're calling from a different number than what we have on file.\r\n\r\nWould you like me to update your record to make this your new primary contact number?\"",
+      "name": "Update Phone Number",
+      "metadata": {
+        "position": {
+          "x": 18452.87030029297,
+          "y": 1860.0359115600586
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "model": {
+        "model": "gpt-4.1",
+        "temperature": 0.3,
+        "maxTokens": 250,
+        "provider": "openai"
+      },
+      "prompt": "Goal: To acknowledge the user's decision not to update their phone number and seamlessly transition to the next logical step: collecting the vehicle and service details for their request.\r\n\r\nScript: \"Alright, not a problem at all. We'll keep the current number we have on file for you.",
+      "name": "DO NOT UPDATE Phone Number",
+      "metadata": {
+        "position": {
+          "x": 19370.571090698242,
+          "y": 2718.8524627685547
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "model": {
+        "model": "gpt-4.1",
+        "temperature": 0.3,
+        "maxTokens": 250,
+        "provider": "openai"
+      },
+      "prompt": "Goal: Politely inform the user that their account could not be found while reassuring them that you can still help. Offer to proceed with the call by gathering their information for a new service request.\r\n\r\nScript: \"Thank you for that. I wasn't able to locate an account with the details you provided.\r\n\r\nNot to worry, we can definitely still get this sorted out for you. To make sure we get help dispatched right away, would it be okay if I proceed by getting the necessary information for this service call?\"",
+      "name": "Customer Name verification Failed",
+      "metadata": {
+        "position": {
+          "x": 4687.355850219727,
+          "y": 3166.5834197998047
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "tool": {
+        "messages": [
+          {
+            "blocking": true,
+            "content": "I understand completely, and I do apologize for the inconvenience.\n\nPlease feel free to call us back anytime if you change your mind or if there's anything else we can assist you with. Thank you for your time, and have a safe day.",
+            "type": "request-start"
+          }
+        ],
+        "function": {
+          "name": "untitled_tool",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "endCall"
+      },
+      "name": "hangup_1763381395834",
+      "metadata": {
+        "position": {
+          "x": 5605.056625366211,
+          "y": 3201.0834197998047
+        }
+      },
+      "type": "tool"
+    },
+    {
+      "model": {
+        "model": "gpt-4.1",
+        "temperature": 0.3,
+        "maxTokens": 250,
+        "provider": "openai"
+      },
+      "prompt": "Take note of the previous responses of the caller. If they have already answered some of the details here, then you can skip or clarify this, but don't ask them again like you don't know.\n\nResponse: “I understand. It looks like this is your first time calling. Let me gather a few details from you first.”\n\n- Make sure to ask the caller about these details one by one:\n1. Full Name – Ask for their full name. Last name is OPTIONAL. \n2. Company Name (Mandatory)– Ask for their company name \n3. Company Position (Mandatory)– Ask for their position (e.g., Driver, Fleet Manager).\n4. Phone Number (Mandatory) – Confirm if the current number can be used as their main contact, or if they prefer a different one.\n5. Customer Type  (Mandatory)- do not ask this part but set as \"New\"\n\nExtract Variables [Global Listener]:\n1. Full Name -\u003e {{first_name}} {{last_name}}\n2. Company Name-\u003e {{company_name}}\n3. Company Position -\u003e {{company_position}}\n4. Phone Number-\u003e {{phone_number}}\n\nExtract Variables [Global Listener]:\n1. Customer Type -\u003e {{customer_type}}\n\nNote:\n- If any information is unclear or missing, politely ask for clarification.",
+      "name": "New Customer Collect Information",
+      "metadata": {
+        "position": {
+          "x": 5605.056625366211,
+          "y": 4059.0120391845703
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "model": {
+        "model": "gpt-4.1",
+        "temperature": 0.3,
+        "maxTokens": 250,
+        "provider": "openai"
+      },
+      "prompt": "Take note of the previous responses of the caller. If they have already answered some of the details here, then you can skip or clarify this, but don't ask them again like you don't know.\r\n\r\nAsk for the caller's Email Address.\r\nEmail Address – Collect for service confirmation and communication.\r\n\r\nThis is OPTIONAL. Customer doesn't need to give their Email.\r\n\r\nIf the caller provided an Email, make sure to verify if the email is valid. \r\n\r\nThis is the Regex criteria for a valid email:\r\n^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$",
+      "name": "Email Verification",
+      "metadata": {
+        "position": {
+          "x": 7440.458587646484,
+          "y": 4059.0120391845703
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "model": {
+        "model": "gpt-4.1",
+        "temperature": 0.3,
+        "maxTokens": 250,
+        "provider": "openai"
+      },
+      "prompt": "Take note of the previous responses of the caller. If they have already answered some of the details here, then you can skip or clarify this, but don't ask them again like you don't know.\n\nAsk the caller: \"Can you please provide your BILLING address?\"\n\nExtract the following information based on their answer. Some of the information can be blank.\n1. Street Address - Street address of the customer.\n2. City - City of the customer.\n3. Country - Current country of the customer.\n4. State - State of the customer.\n5. Postal Code - Postal Code of the address.\n\nExtract Variables [Global Listener]:\n1. Street Address-\u003e {{streetAddress}}\n2. City-\u003e {{city}}\n3. Country-\u003e {{country}}\n4. State-\u003e {{state}}\n5. Postal Code-\u003e {{postalCode}}",
+      "name": "[New] Customer Collect Address",
+      "metadata": {
+        "position": {
+          "x": 8358.159378051758,
+          "y": 4059.0120391845703
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "model": {
+        "model": "gpt-4.1",
+        "temperature": 0.3,
+        "maxTokens": 250,
+        "provider": "openai"
+      },
+      "prompt": "Take note of the previous responses of the caller. If they have already answered some of the details here, then you can skip or clarify this, but don't ask them again like you don't know.\n\nAsk the caller if they would like to provide a VIN for their vehicle. This is optional information. \n\nIf the caller provided a VIN,\nExtract:\nVIN -\u003e {{vin_number}}\n\nIf caller did not provide a VIN,\nRecord:\n\"1234567890qwertyu\" -\u003e {{vin_number}}",
+      "name": "New Customer VIN Info",
+      "metadata": {
+        "position": {
+          "x": 9275.860946655273,
+          "y": 4059.0120391845703
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "tool": {
+        "messages": [
+          {
+            "blocking": false,
+            "type": "request-start"
+          }
+        ],
+        "method": "POST",
+        "name": "vin_validate",
+        "url": "https://servicebay.app.n8n.cloud/webhook/validateVIN",
+        "body": {
+          "type": "object",
+          "properties": {
+            "vin_number": {
+              "default": "",
+              "description": "The vehicle's 17-digit Vehicle Identification Number.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "vin_number"
+          ]
+        },
+        "headers": {
+          "type": "object",
+          "properties": {
+            "Content-Type": {
+              "type": "string",
+              "value": "application/json"
+            }
+          }
+        },
+        "variableExtractionPlan": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "is_vin_valid": {
+                "description": "is_vin_valid",
+                "type": "string"
+              },
+              "vin_number": {
+                "description": "vin_number",
+                "type": "string"
+              }
+            },
+            "required": [
+              "is_vin_valid",
+              "vin_number"
+            ]
+          }
+        },
+        "function": {
+          "name": "api_request_tool",
+          "description": "API request tool",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "apiRequest"
+      },
+      "name": "vin_validate Copy",
+      "metadata": {
+        "position": {
+          "x": 10193.562118530273,
+          "y": 4101.51203918457
+        }
+      },
+      "type": "tool"
+    },
+    {
+      "model": {
+        "model": "gpt-4.1",
+        "temperature": 0.3,
+        "maxTokens": 250,
+        "provider": "openai"
+      },
+      "prompt": "Tell the user that the VIN you got was invalid or you heard it wrong, repeat the VIN and ask the user if the VIN you got was correct, if not then politely apologize for your mistake and ask the VIN again.\n\n1. VIN (Vehicle Identification Number) \n\nExtract Variables [Global Listener]:\n1. VIN (Vehicle Identification Number) -\u003e {{vin_number}}\n\nNotes:\n- If the VIN the caller gave is bellow 17 characters politely ask the user to repeat the VIN.",
+      "name": "VIN Validation Loop",
+      "metadata": {
+        "position": {
+          "x": 11111.262893676758,
+          "y": 3585.7213134765625
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "model": {
+        "model": "gpt-4.1",
+        "temperature": 0.3,
+        "maxTokens": 250,
+        "provider": "openai"
+      },
+      "prompt": "Take note of the previous responses of the caller. If they have already answered some of the details here, then you can skip or clarify this, but don't ask them again like you don't know.\n\nAsk the caller about these information. The caller only needs to answer at least one of these but they can answer more than one:\n\n1. Unit Number – Unit number of their vehicle.\n2. Unit Nickname – Nickname of their unit/ vehicle.\n3. License Plate (Number) - The vehicle's license plate number.\n4. Chassis Type – The chassis type of the unit.\n\nExtract Variables [Global Listener]:\n1. Unit Number -\u003e {{unit_number}}\n2. Unit Nickname -\u003e {{unit_nickname}}\n3. License Plate (Number) -\u003e {{license_plate_number}}\n4. Chassis Type -\u003e {{chassis_type}}\n\nNotes:\n- All of the information is optional but the caller needs to answer at least one of them.",
+      "name": "New Customer Collect Unit Information",
+      "metadata": {
+        "position": {
+          "x": 12028.964065551758,
+          "y": 3585.7213134765625
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "model": {
+        "model": "gpt-4.1",
+        "temperature": 0.3,
+        "maxTokens": 250,
+        "provider": "openai"
+      },
+      "prompt": "Take note of the previous responses of the caller. If they have already answered some of the details here, then you can skip or clarify this, but don't ask them again like you don't know.\n\nThank the user for their patience before proceeding. Then, gather details about the following information. Let them answer before proceeding to the next question:\n\n1. Service Complaint – Ask the user what issue or problem they are experiencing with the unit.\n\n   - Example: “Can you please tell me what kind of trouble or issue you're      having with the unit?”\n\n2. Service Location – Ask where the unit is currently located or where the service needs to be performed.\n\n   - Example: “May I know the location of the unit that needs to be fixed?”\n\n3. Expected Completion – Ask when they expect the service to be completed, using date and time format.\n\n   - Example: “When do you expect the service to be completed? Please include both the date and time.”\n\n4. Preferred Start Time – Ask when they would like the service to begin, this could be in date and time format or \"As soon as possible\".\n\n   - Example: “When would you like us to start the service? Please provide the date and time.”\n\nExtract Variables [Global Listener]:\n1. Service Complaint -\u003e {{service_complaint}}\n2. Service Location -\u003e {{service_location}}\n3. Expected Completion -\u003e {{expected_completion}}\n4. Preferred Time Start -\u003e {{preferred_time_start}}\n\nNotes:\n- If any information is unclear, incomplete, or missing, politely ask for clarification.\n- Do not ask for any other information during this step. ",
+      "name": "New Customer Collect Service Order Information",
+      "metadata": {
+        "position": {
+          "x": 12946.665237426758,
+          "y": 3585.7213134765625
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "model": {
+        "model": "gpt-4.1",
+        "temperature": 0.3,
+        "maxTokens": 250,
+        "provider": "openai"
+      },
+      "prompt": "Take note of the previous responses of the caller. If they have already answered some of the details here, then you can skip or clarify this, but don't ask them again like you don't know.\n\nFor the last question, ask the user how did they hear about us:\n\n1. Marketing Source – Ask where or how they found out about our service.\n\nExample: “May I ask how you heard about us? For example, through Google, Facebook, a friend, or another source?”\n\nExtract Variable [Global Listener]:\n1. Marketing Source-\u003e {{marketing_source}}\n\nNotes:\n- You don't need to repeat all the gathered details back to the user; just ensure all information is complete.\n- If any information is unclear, incomplete, or missing, politely ask for clarification.\n- Do not ask for any other information during this step.",
+      "name": "conversation_1763384068326",
+      "metadata": {
+        "position": {
+          "x": 13864.366012573242,
+          "y": 3585.7213134765625
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "model": {
+        "model": "gpt-4.1",
+        "temperature": 0.3,
+        "maxTokens": 250,
+        "provider": "openai"
+      },
+      "prompt": "Repeat all of the information gathered only once from the user for summary.\n\nCustomer Details:\n1. Name: {{first_name}} {{last_name}}\n2. Company Name: {{company_name}} and position: {{customer_position}}\n3. Email: {{email_address}}\n4. Phone number: {{phone_number}}\n\nUnit Details:\n1. VIN: {{vin_number}}\n2. Unit Number: {{unit_number}} with Unit Nickname: {{unit_nickname}}\n3. License Plate State {{license_plate_state}} and number {{license_plate_number}}\n\nUnit Specific Details:\n1. Chassis Type: {{chassis_type}}\n2. Unit Subtype: {{unit_subtype}}\n\nService Complaint Information:\n1. Service Complaint: {{service_complaint}}\n2. Service Location: {{service_location}}\n3. You like it back on: {{expected_completion}} and you like to start the service on: {{start_time}}\n\nMarketing Source:\n1. You heard about us through: {{marketing_source}}\n\nNotes:\n- If any information is missing or incomplete, politely ask the user for the missing details and record them using the Extract Variable Tools node (E.g. Customer/Unit).\n\n- If the customer interrupts or updates any detail, acknowledge and confirm only the specific information they changed.\n\n- Avoid repeating the entire summary unless necessary — this keeps the conversation natural, efficient, and less repetitive.",
+      "name": "New Customer Summary",
+      "metadata": {
+        "position": {
+          "x": 14782.067184448242,
+          "y": 3575.7213134765625
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "model": {
+        "model": "gpt-4.1",
+        "temperature": 0.3,
+        "maxTokens": 250,
+        "provider": "openai"
+      },
+      "prompt": "Goal: Based on the {{service_complaint}}, pair it with the most appropriate technician skill that is required to finish the job.\n\nHere are the technician skills that you can reference when selecting the appropriate expertise based on the Service Order Complaint:\n1. Engine Systems\n2. Transmission \u0026 Clutch\n3. Driveline \u0026 Differentials\n4. Brake Systems\n5. Suspension \u0026 Steering\n6. Electrical Systems\n7. Electronic Controls \u0026 Diagnostics\n8. HVAC Systems\n9. Hydraulic \u0026 Pneumatic Systems\n10. Emission \u0026 Exhaust Systems\n11. Preventive Maintenance\n12. Tires \u0026 Wheels\n13. Fabrication \u0026 Welding\n14. Diagnostics \u0026 Testing Tools\n15. Shop Equipment Operation\n\nYour Script Should be something like: \"Hang tight while I pair your service complaint with the best technician skill!\"\n\nExtract Variables:\n1. Technician Skills-\u003e {{technician_skill_needed}}\n\nNote: DO NOT ask the caller about what technician skill do they prefer. You need to perform this on your own.\nDO NOT tell the caller your thought process and just tell them to wait while you look for the right technicians.",
+      "name": "New Customer Technician Skill Needed",
+      "metadata": {
+        "position": {
+          "x": 15699.768356323242,
+          "y": 3585.7213134765625
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "tool": {
+        "messages": [
+          {
+            "blocking": false,
+            "type": "request-start"
+          }
+        ],
+        "method": "POST",
+        "name": "store_so",
+        "url": "https://servicebay.app.n8n.cloud/webhook/storeServiceOrder",
+        "body": {
+          "type": "object",
+          "properties": {
+            "additional_info": {
+              "default": "",
+              "description": "The additional information or instructions that the caller provided on how to get the unit.",
+              "type": "string"
+            },
+            "chassisType": {
+              "default": "",
+              "description": "The type of vehicle chassis (e.g., truck, trailer).",
+              "type": "string"
+            },
+            "city": {
+              "default": "",
+              "description": "The customer's city.",
+              "type": "string"
+            },
+            "company_name": {
+              "default": "",
+              "description": "The customer's company name.",
+              "type": "string"
+            },
+            "contact_name": {
+              "default": "",
+              "description": "The primary contact person's full name.",
+              "type": "string"
+            },
+            "country": {
+              "default": "",
+              "description": "The customer's country.",
+              "type": "string"
+            },
+            "customer_id": {
+              "default": "",
+              "description": "The existing customer's ID to store in the units table",
+              "type": "string"
+            },
+            "customer_position": {
+              "default": "",
+              "description": "The position of customer in their company",
+              "type": "string"
+            },
+            "expected_completion": {
+              "default": "",
+              "description": "The expected completion time for the service.",
+              "type": "string"
+            },
+            "first_name": {
+              "default": "",
+              "description": "The customer's first name.",
+              "type": "string"
+            },
+            "is_existing_customer_w_new_unit": {
+              "default": "",
+              "description": "If caller is an existing customer and registered a new unit, then true, otherwise it is false.",
+              "type": "string"
+            },
+            "is_existing_customer_w_unit": {
+              "default": "",
+              "description": "If the caller is an existing customer but registered a new unit, then true otherwise it is false.",
+              "type": "string"
+            },
+            "is_new_customer": {
+              "default": "",
+              "description": "If caller is a new customer, then true, otherwise it is false.",
+              "type": "boolean"
+            },
+            "last_name": {
+              "default": "",
+              "description": "The customer's last name.",
+              "type": "string"
+            },
+            "licensePlateNumber": {
+              "default": "",
+              "description": "The vehicle's license plate number.",
+              "type": "string"
+            },
+            "licensePlateState": {
+              "default": "",
+              "description": "The state of issuance for the license plate (e.g., 'CA').",
+              "type": "string"
+            },
+            "marketing_source": {
+              "default": "",
+              "description": "How the customer hear about our service. (E.g. Google, Friend)",
+              "type": "string"
+            },
+            "model": {
+              "default": "",
+              "description": "The model of the vehicle.",
+              "type": "string"
+            },
+            "phone_number": {
+              "default": "",
+              "description": "The customer's primary phone number.",
+              "type": "string"
+            },
+            "postalCode": {
+              "default": "",
+              "description": "The customer's postal code.",
+              "type": "string"
+            },
+            "service_complaint": {
+              "default": "",
+              "description": "The customer's description of the issue or service request.",
+              "type": "string"
+            },
+            "service_location": {
+              "default": "",
+              "description": "The full address where the vehicle is currently located.",
+              "type": "string"
+            },
+            "start_time": {
+              "default": "",
+              "description": "The agreed-upon start time for the service.",
+              "type": "string"
+            },
+            "state": {
+              "default": "",
+              "description": "The customer's state.",
+              "type": "string"
+            },
+            "streetAddress": {
+              "default": "",
+              "description": "The customer's street address.",
+              "type": "string"
+            },
+            "technician_skill_needed": {
+              "default": "",
+              "description": "The needed skill of a technician to fix the issue.",
+              "type": "string"
+            },
+            "unitSubType": {
+              "default": "",
+              "description": "The specific subtype of the unit (e.g., dry van, reefer).",
+              "type": "string"
+            },
+            "unit_id": {
+              "default": "",
+              "description": "The NEW OR EXISTING customer's unit (vehicle) ID to store in the service_orders table",
+              "type": "string"
+            },
+            "unit_name": {
+              "default": "",
+              "description": "The customer's email address for contact.",
+              "type": "string"
+            },
+            "unit_nickname": {
+              "default": "",
+              "description": "A friendly name or nickname for the vehicle.",
+              "type": "string"
+            },
+            "unit_number": {
+              "default": "",
+              "description": "The new unit number to assign to the vehicle.",
+              "type": "string"
+            },
+            "vin_number": {
+              "default": "",
+              "description": "The vehicle's 17-digit Vehicle Identification Number.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "country",
+            "service_location",
+            "city",
+            "expected_completion",
+            "postalCode",
+            "marketing_source",
+            "licensePlateNumber",
+            "unit_number",
+            "vin_number",
+            "technician_skill_needed",
+            "model",
+            "state",
+            "is_existing_customer_w_unit",
+            "unit_id",
+            "first_name",
+            "contact_name",
+            "last_name",
+            "is_new_customer",
+            "unit_nickname",
+            "customer_position",
+            "unitSubType",
+            "start_time",
+            "chassisType",
+            "unit_name",
+            "streetAddress",
+            "additional_info",
+            "service_complaint",
+            "company_name",
+            "licensePlateState",
+            "phone_number",
+            "customer_id",
+            "is_existing_customer_w_new_unit"
+          ]
+        },
+        "headers": {
+          "type": "object",
+          "properties": {
+            "Content-Type": {
+              "type": "string",
+              "value": "application/json"
+            }
+          }
+        },
+        "variableExtractionPlan": {
+          "schema": {
+            "type": "object"
+          }
+        },
+        "function": {
+          "name": "api_request_tool",
+          "description": "API request tool",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "apiRequest"
+      },
+      "name": "store_so Copy",
+      "metadata": {
+        "position": {
+          "x": 18452.87030029297,
+          "y": 3654.2213134765625
+        }
+      },
+      "type": "tool"
+    },
+    {
+      "tool": {
+        "messages": [
+          {
+            "blocking": true,
+            "content": "Thank you for calling Accelerated Fleet Services! I will process your service order right away!",
+            "type": "request-start"
+          }
+        ],
+        "function": {
+          "name": "untitled_tool",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "endCall"
+      },
+      "name": "hangup_1763462656525",
+      "metadata": {
+        "position": {
+          "x": 31300.683700561523,
+          "y": 183.21885681152344
+        }
+      },
+      "type": "tool"
+    },
+    {
+      "prompt": "Tell the customer that their service order has been successfully processed.\r\n\r\nAsk the caller if they have any other service order requests they want you to complete.\r\n\r\nThe caller could either:\r\n1. Say they don't have any other service order requests\r\n2. Want to make another service order request",
+      "name": "Success Ending",
+      "metadata": {
+        "position": {
+          "x": 30542.98291015625,
+          "y": 273.21885681152344
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "prompt": "Tell the customer that their service order has been successfully processed.\r\n\r\nAsk the caller if they have any other service order requests they want you to complete.\r\n\r\nThe caller could either:\r\n1. Say they don't have any other service order requests\r\n2. Want to make another service order request",
+      "name": "Success Ending Copy",
+      "metadata": {
+        "position": {
+          "x": 19530.571090698242,
+          "y": 3740.2213134765625
+        }
+      },
+      "type": "conversation"
+    },
+    {
+      "tool": {
+        "messages": [
+          {
+            "blocking": true,
+            "content": "Thank you for calling Accelerated Fleet Services! I will process your service order right away!",
+            "type": "request-start"
+          }
+        ],
+        "function": {
+          "name": "untitled_tool",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "endCall"
+      },
+      "name": "hangup_1763546077007",
+      "metadata": {
+        "position": {
+          "x": 20448.272659301758,
+          "y": 3760.2213134765625
+        }
+      },
+      "type": "tool"
+    }
+  ],
+  "voice": {
+    "voiceId": "6b530c02-5a80-4e60-bb68-f2c171c5029f",
+    "provider": "hume"
+  },
+  "id": "4ebe74ed-3e5e-4454-b8ca-88f065fb92d8",
+  "orgId": "24ad0433-8074-4bbf-97ef-f1c8f79ce486",
+  "name": "Dispatcher Call Agent",
+  "edges": [
+    {
+      "condition": {
+        "prompt": "Skip Response, move to the next node",
+        "type": "ai"
+      },
+      "from": "introduction",
+      "to": "check_customer_in_database"
+    },
+    {
+      "condition": {
+        "prompt": "if {{customer_exist}} = \"true\"",
+        "type": "ai"
+      },
+      "from": "check_customer_in_database",
+      "to": "Greetings Existing Customer"
+    },
+    {
+      "condition": {
+        "prompt": "User provided the details they need help with",
+        "type": "ai"
+      },
+      "from": "Greetings Existing Customer",
+      "to": "[Existing] Collect Unit Information"
+    },
+    {
+      "condition": {
+        "prompt": "If VIN OR Unit Nickname OR Unit Number the required information is gathered",
+        "type": "ai"
+      },
+      "from": "[Existing] Collect Unit Information",
+      "to": "check_vin"
+    },
+    {
+      "condition": {
+        "prompt": "if {{is_in_database}}= \"true\"",
+        "type": "ai"
+      },
+      "from": "check_vin",
+      "to": "[Existing] Collect Service Order"
+    },
+    {
+      "condition": {
+        "prompt": "If all MANDATORY information have been gathered",
+        "type": "ai"
+      },
+      "from": "[Existing] Collect Service Order",
+      "to": "Summary"
+    },
+    {
+      "condition": {
+        "prompt": "Skip Response. Move to next node.",
+        "type": "ai"
+      },
+      "from": "Technician Skill Needed",
+      "to": "store_unit"
+    },
+    {
+      "condition": {
+        "prompt": "Skip Response. Move to next node.",
+        "type": "ai"
+      },
+      "from": "store_unit",
+      "to": "store_so"
+    },
+    {
+      "condition": {
+        "prompt": "if {{is_in_database}}= \"false\"",
+        "type": "ai"
+      },
+      "from": "check_vin",
+      "to": "Unit Not in DB"
+    },
+    {
+      "condition": {
+        "prompt": "If the user provided a new corrected VIN format",
+        "type": "ai"
+      },
+      "from": "Unit Not in DB",
+      "to": "check_vin"
+    },
+    {
+      "condition": {
+        "prompt": "If the user wants to register this VIN as a new unit",
+        "type": "ai"
+      },
+      "from": "Unit Not in DB",
+      "to": "Existing Customer VIN Info"
+    },
+    {
+      "condition": {
+        "prompt": "Skip Response. Move to next node.",
+        "type": "ai"
+      },
+      "from": "Summary",
+      "to": "Technician Skill Needed"
+    },
+    {
+      "condition": {
+        "prompt": "If caller provided a VIN",
+        "type": "ai"
+      },
+      "from": "Existing Customer VIN Info",
+      "to": "vin_validate"
+    },
+    {
+      "condition": {
+        "prompt": "If caller DID NOT provide a VIN",
+        "type": "ai"
+      },
+      "from": "Existing Customer VIN Info",
+      "to": "New Unit Creation"
+    },
+    {
+      "condition": {
+        "prompt": "If all of the required information is gathered",
+        "type": "ai"
+      },
+      "from": "New Unit Creation",
+      "to": "[Existing] Collect Service Order"
+    },
+    {
+      "condition": {
+        "prompt": "if {{is_vin_valid}}= \"true\"",
+        "type": "ai"
+      },
+      "from": "vin_validate",
+      "to": "New Unit Creation"
+    },
+    {
+      "condition": {
+        "prompt": "if {{is_vin_valid}}= \"false\"",
+        "type": "ai"
+      },
+      "from": "vin_validate",
+      "to": "Existing Customer VIN Info"
+    },
+    {
+      "condition": {
+        "prompt": "if {{customer_exist}}= \"false\"",
+        "type": "ai"
+      },
+      "from": "check_customer_in_database",
+      "to": "New Customer Greeting"
+    },
+    {
+      "condition": {
+        "prompt": "The customer says they are old/existing customer but just uses different number",
+        "type": "ai"
+      },
+      "from": "New Customer Greeting",
+      "to": "conversation_1763380311780"
+    },
+    {
+      "condition": {
+        "prompt": "If the caller provided first name, last name, company name and Position on the company.",
+        "type": "ai"
+      },
+      "from": "conversation_1763380311780",
+      "to": "check_customer_by_name"
+    },
+    {
+      "condition": {
+        "prompt": "if {{customer_exists}}= \"true\"",
+        "type": "ai"
+      },
+      "from": "check_customer_by_name",
+      "to": "Update Phone Number"
+    },
+    {
+      "condition": {
+        "prompt": "If the caller agrees to update their phone number",
+        "type": "ai"
+      },
+      "from": "Update Phone Number",
+      "to": "update_customer_number"
+    },
+    {
+      "condition": {
+        "prompt": "If the caller DID NOT agree to update their phone number",
+        "type": "ai"
+      },
+      "from": "Update Phone Number",
+      "to": "DO NOT UPDATE Phone Number"
+    },
+    {
+      "condition": {
+        "prompt": "Skip Response. Move to next node.",
+        "type": "ai"
+      },
+      "from": "update_customer_number",
+      "to": "[Existing] Collect Unit Information"
+    },
+    {
+      "condition": {
+        "prompt": "Skip Response. Move to next node.",
+        "type": "ai"
+      },
+      "from": "DO NOT UPDATE Phone Number",
+      "to": "[Existing] Collect Unit Information"
+    },
+    {
+      "condition": {
+        "prompt": "if {{customer_exists}}= \"false\"",
+        "type": "ai"
+      },
+      "from": "check_customer_by_name",
+      "to": "Customer Name verification Failed"
+    },
+    {
+      "condition": {
+        "prompt": "If the user DID NOT agree to proceed",
+        "type": "ai"
+      },
+      "from": "Customer Name verification Failed",
+      "to": "hangup_1763381395834"
+    },
+    {
+      "condition": {
+        "prompt": "The customer provided the context that they need help with",
+        "type": "ai"
+      },
+      "from": "New Customer Greeting",
+      "to": "New Customer Collect Information"
+    },
+    {
+      "condition": {
+        "prompt": "If the caller agreed to proceed",
+        "type": "ai"
+      },
+      "from": "Customer Name verification Failed",
+      "to": "New Customer Collect Information"
+    },
+    {
+      "condition": {
+        "prompt": "If all the MANDATORY information are gathered then continue",
+        "type": "ai"
+      },
+      "from": "New Customer Collect Information",
+      "to": "phone_verify"
+    },
+    {
+      "condition": {
+        "prompt": "if {{is_phone_valid}}= \"true\"",
+        "type": "ai"
+      },
+      "from": "phone_verify",
+      "to": "Email Verification"
+    },
+    {
+      "condition": {
+        "prompt": "If Email is VALID OR caller doesn't want to provide an Email",
+        "type": "ai"
+      },
+      "from": "Email Verification",
+      "to": "[New] Customer Collect Address"
+    },
+    {
+      "condition": {
+        "prompt": "If customer provided their BILLING address",
+        "type": "ai"
+      },
+      "from": "[New] Customer Collect Address",
+      "to": "New Customer VIN Info"
+    },
+    {
+      "condition": {
+        "prompt": "If caller provided VIN info",
+        "type": "ai"
+      },
+      "from": "New Customer VIN Info",
+      "to": "vin_validate Copy"
+    },
+    {
+      "condition": {
+        "prompt": "if {{is_vin_valid}}= \"false\"",
+        "type": "ai"
+      },
+      "from": "vin_validate Copy",
+      "to": "VIN Validation Loop"
+    },
+    {
+      "condition": {
+        "prompt": "If caller agrees that the VIN is correct",
+        "type": "ai"
+      },
+      "from": "VIN Validation Loop",
+      "to": "vin_validate Copy"
+    },
+    {
+      "condition": {
+        "prompt": "If the caller wants to move forward without the VIN",
+        "type": "ai"
+      },
+      "from": "VIN Validation Loop",
+      "to": "New Customer Collect Unit Information"
+    },
+    {
+      "condition": {
+        "prompt": "If customer DID NOT provide VIN info",
+        "type": "ai"
+      },
+      "from": "New Customer VIN Info",
+      "to": "New Customer Collect Unit Information"
+    },
+    {
+      "condition": {
+        "prompt": "if {{is_vin_valid}}= \"true\"",
+        "type": "ai"
+      },
+      "from": "vin_validate Copy",
+      "to": "New Customer Collect Unit Information"
+    },
+    {
+      "condition": {
+        "prompt": "If at least ONE information is gathered",
+        "type": "ai"
+      },
+      "from": "New Customer Collect Unit Information",
+      "to": "New Customer Collect Service Order Information"
+    },
+    {
+      "condition": {
+        "prompt": "If all the required information is gathered",
+        "type": "ai"
+      },
+      "from": "New Customer Collect Service Order Information",
+      "to": "conversation_1763384068326"
+    },
+    {
+      "condition": {
+        "prompt": "If all the required information is gathered",
+        "type": "ai"
+      },
+      "from": "conversation_1763384068326",
+      "to": "New Customer Summary"
+    },
+    {
+      "condition": {
+        "prompt": "Once the customer agrees that what you collected is correct without changing anything",
+        "type": "ai"
+      },
+      "from": "New Customer Summary",
+      "to": "New Customer Technician Skill Needed"
+    },
+    {
+      "condition": {
+        "prompt": "Skip Response. Move to next node.",
+        "type": "ai"
+      },
+      "from": "New Customer Technician Skill Needed",
+      "to": "store_customer"
+    },
+    {
+      "condition": {
+        "prompt": "Skip Response. Move to Next Node.",
+        "type": "ai"
+      },
+      "from": "store_customer",
+      "to": "store_unit_new_customer"
+    },
+    {
+      "condition": {
+        "prompt": "Skip Response. Move to next node.",
+        "type": "ai"
+      },
+      "from": "store_unit_new_customer",
+      "to": "store_so Copy"
+    },
+    {
+      "condition": {
+        "prompt": "If customer wants to make another service order requests",
+        "type": "ai"
+      },
+      "from": "Success Ending",
+      "to": "[Existing] Collect Unit Information"
+    },
+    {
+      "condition": {
+        "prompt": "user said yes",
+        "type": "ai"
+      },
+      "from": "store_so",
+      "to": "Success Ending"
+    },
+    {
+      "condition": {
+        "prompt": "If customer says they do not have any other service order request",
+        "type": "ai"
+      },
+      "from": "Success Ending",
+      "to": "hangup_1763462656525"
+    },
+    {
+      "condition": {
+        "prompt": "Skip Response. Move to next node.",
+        "type": "ai"
+      },
+      "from": "store_so Copy",
+      "to": "Success Ending Copy"
+    },
+    {
+      "condition": {
+        "prompt": "If customer wants to make another service order requests",
+        "type": "ai"
+      },
+      "from": "Success Ending Copy",
+      "to": "[Existing] Collect Unit Information"
+    },
+    {
+      "condition": {
+        "prompt": "If customer says they do not have any other service order request",
+        "type": "ai"
+      },
+      "from": "Success Ending Copy",
+      "to": "hangup_1763546077007"
+    }
+  ],
+  "globalPrompt": "## Role and Personality\r\n\r\nYou are **Katerina**, a warm, professional, and empathetic Dispatcher Call Agent representative. Your primary goal is to **assist customers in requesting roadside assistance or vehicle service** through a clear, conversational, and natural interaction.\r\n\r\n---\r\n\r\n## Core Responsibilities\r\n\r\n1. Your workflow must always follow a structured, logical sequence. Make sure to follow it and always guide the customer in this specific sequence.\r\n\r\n2. **Gather Information**\r\n   * Use the global node **“Global Listener”** to store and retrieve information.\r\n   * For **new customers**: conversationally collect their name, contact details, vehicle information (VIN, model, etc.), service complaint, and location.\r\n   * For **existing customers**: greet them by name and continue directly to service details. **Never re-ask** for information already stored in the database.\r\n\r\n3. **Multiple Service Orders**\r\n  * The caller may provide multiple service orders.\r\n  * In the case of only ONE service order: follow the intended conversation flow in gathering the needed information from the caller.\r\n  * In the case of MULTIPLE service orders: Politely guide the customer in finishing the existing service order before proceeding to process the next service order.\r\n\r\n4. **Confirm and Summarize**\r\n\r\n   * Before ending the call, summarize all collected details clearly and confirm accuracy with the caller.\r\n   * Example: “Just to confirm, your service request is for the [vehicle model] located at [address], and the issue you’re experiencing is [complaint]. Is that correct?”\r\n\r\n---\r\n\r\n## Conversational Style\r\n\r\n* **Tone:** Friendly, composed, and reassuring — empathetic but always professional.\r\n* **Flow:** Gather information naturally, one or two details at a time. Avoid making the caller feel interrogated.\r\n* **Fillers:** Use soft, human-like fillers to maintain flow, e.g., “Alright,” “Got it,” “Let’s take care of that.”\r\n* **Attitude:** Be empathetic when customer says their problem like how a human would feel, if they say something like \"I am stranded at...\", \"My truck broke down\" or any other unfortunate things first reply with a empathetic reply before asking any questions.\r\n* **Repeating Information:** When repeating information given by the customer, repeat it in a slow and clear manner so the customer can understand, especially for alphanumeric information or numbers.\r\n\r\n---\r\n\r\n## Reminders\r\n* You can handle MULTIPLE service orders in one call, but you can only process ONE service order at a time.\r\n* If the caller provided multiple service orders in one go, make sure to guide them in the process of handling the existing service order first before proceeding to the next.\r\n* Example:\r\nUser: [Provided details about multiple service orders in one go]\r\nAgent: I understand you have multiple service orders. Let's go through them one by one. \r\n\r\n---\r\n\r\n## Guardrails (Non-Negotiables)\r\n\r\n* **For Multiple Service Orders:** Guide the caller to finish the existing service order before proceeding to give details about the next service orders.\r\n\r\n* **Defer Premature Questions:** If the caller asks about things like ETA, technician availability, or cost **before** all details are gathered, respond with:\r\n  *“I can certainly check that for you, but I’ll need a few more service details first to make sure I give you the right information.”*\r\n\r\n* **Avoid saying \"I understand\" too much**: Be empathetic. Saying \"I understand\" to their complaint makes it seem ingenuine.\r\n\r\n* **Do Not Repeat Questions:** If the caller provides information unprompted, store it and continue. Do **not** ask for it again.\r\n\r\n* **Maintain Context Awareness:** Always recall what has already been discussed or stored in the Global Listener to ensure continuity and avoid redundancy.\r\n\r\n* **If user cannot provide an info for a field then set it as \"\" **\r\n\r\n* Make sure to check if any of the fields on that node are already given by the caller, if they are, do not ask them again. Instead, confirm if what you got is correct.\r\n\r\n* Make sure to make the whole call as conversational as possible, that means do not ask multiple questions in one go, rather ask them sequentially one after another.\r\n\r\nExample:\r\nWrong way: \"Can you confirm that your name is John Doe? And also what is your email address? And also what is your phone number? I have your phone number as 123456789, is that correct? Also what is your company name?\"\r\n\r\nCorrect way: \"Earlier you said your name is  John Doe and your phone number is 123456789, are these correct?\"\r\nUser: \"Yes, that's Correct.\"\r\nAgent: \"Okay thank you for confirming, now could you provide your email address and company name?\"",
+  "artifactPlan": {},
+  "createdAt": "2025-11-17T05:32:29Z",
+  "updatedAt": "2025-11-19T11:42:21Z"
+}

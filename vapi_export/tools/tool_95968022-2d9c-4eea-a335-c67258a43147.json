@@ -1,0 +1,40 @@
+{
+  "messages": [
+    {
+      "content": " ",
+      "type": "request-start"
+    },
+    {
+      "content": " ",
+      "type": "request-complete"
+    },
+    {
+      "content": "I'm having trouble connecting to the system.",
+      "type": "request-failed"
+    }
+  ],
+  "server": {
+    "url": "https://call-agent-development.up.railway.app/vapi/tools"
+  },
+  "id": "95968022-2d9c-4eea-a335-c67258a43147",
+  "orgId": "24ad0433-8074-4bbf-97ef-f1c8f79ce486",
+  "function": {
+    "name": "get_case_status",
+    "description": "Get case status and determine how to respond. ALWAYS pass the user's last message so the system can detect frustration, corrections, or new requests and tell you exactly how to respond.",
+    "parameters": {
+      "properties": {
+        "user_message": {
+          "type": "string",
+          "description": "The user's exact last message"
+        }
+      },
+      "required": [
+        "user_message"
+      ],
+      "type": "object"
+    }
+  },
+  "createdAt": "2026-01-17T03:34:24Z",
+  "updatedAt": "2026-01-17T03:34:24Z",
+  "type": "function"
+}

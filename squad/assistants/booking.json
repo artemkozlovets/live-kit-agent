@@ -1,0 +1,228 @@
+{
+  "name": "Booking",
+  "voice": {
+    "model": "eleven_flash_v2_5",
+    "voiceId": "dj3G1R1ilKoFKhBnWOzG",
+    "provider": "11labs",
+    "stability": 0.5,
+    "fallbackPlan": {
+      "voices": [
+        {
+          "model": "eleven_turbo_v2_5",
+          "voiceId": "kPzsL2i3teMYv0FxEYQ6",
+          "provider": "11labs",
+          "stability": 0.5,
+          "similarityBoost": 0.75
+        }
+      ]
+    },
+    "similarityBoost": 0.75,
+    "fillerInjectionEnabled": false
+  },
+  "model": {
+    "model": "gemini-2.5-flash",
+    "toolIds": [
+      "95968022-2d9c-4eea-a335-c67258a43147"
+    ],
+    "provider": "google",
+    "temperature": 0.3
+  },
+  "firstMessage": "",
+  "transcriber": {
+    "model": "flux-general-en",
+    "language": "en",
+    "provider": "deepgram"
+  },
+  "backgroundSound": "off",
+  "backchannelingEnabled": false,
+  "firstMessageMode": "assistant-speaks-first-with-model-generated-message",
+  "hooks": [
+    {
+      "do": [
+        {
+          "type": "say",
+          "exact": [
+            "Just checking \u2014 are you still there?",
+            "No rush. I can continue when you're ready.",
+            "I'm here when you're ready to continue."
+          ]
+        }
+      ],
+      "on": "customer.speech.timeout",
+      "name": "idle-reengage",
+      "options": {
+        "timeoutSeconds": 10,
+        "triggerMaxCount": 3,
+        "triggerResetMode": "onUserSpeech"
+      }
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "server": {
+        "url": "https://call-agent-development.up.railway.app/vapi/tools"
+      },
+      "function": {
+        "name": "get_case_status",
+        "parameters": {
+          "type": "object",
+          "required": [
+            "call_id",
+            "last_user_message"
+          ],
+          "properties": {
+            "call_id": {
+              "type": "string",
+              "description": "The Vapi call ID"
+            },
+            "last_user_message": {
+              "type": "string",
+              "description": "The user's most recent message, exactly as they said it"
+            }
+          }
+        },
+        "description": "Get case status and determine how to respond. ALWAYS pass the user's last message."
+      },
+      "messages": [
+        {
+          "type": "request-start",
+          "content": ""
+        },
+        {
+          "type": "request-response-delayed",
+          "content": "",
+          "timingMilliseconds": 60000
+        },
+        {
+          "type": "request-failed",
+          "content": "I'm having trouble connecting to the system."
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "server": {
+        "url": "https://call-agent-development.up.railway.app/vapi/tools"
+      },
+      "function": {
+        "name": "get_session_summary",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {}
+        },
+        "description": "Get the accumulated service list for this call."
+      },
+      "messages": [
+        {
+          "type": "request-start",
+          "content": ""
+        },
+        {
+          "type": "request-response-delayed",
+          "content": "",
+          "timingMilliseconds": 60000
+        },
+        {
+          "type": "request-failed",
+          "content": "I'm having trouble connecting to the system."
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "server": {
+        "url": "https://call-agent-development.up.railway.app/vapi/tools"
+      },
+      "function": {
+        "name": "store_service_order",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {}
+        },
+        "description": "Store all accumulated services as service orders."
+      },
+      "messages": [
+        {
+          "type": "request-start",
+          "content": ""
+        },
+        {
+          "type": "request-response-delayed",
+          "content": "",
+          "timingMilliseconds": 60000
+        },
+        {
+          "type": "request-failed",
+          "content": "I'm having trouble connecting to the system."
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "server": {
+        "url": "https://call-agent-development.up.railway.app/vapi/tools"
+      },
+      "function": {
+        "name": "send_confirmation_sms",
+        "parameters": {
+          "type": "object",
+          "required": [
+            "phone_number",
+            "message"
+          ],
+          "properties": {
+            "message": {
+              "type": "string",
+              "description": "SMS body"
+            },
+            "phone_number": {
+              "type": "string",
+              "description": "Phone number to text"
+            }
+          }
+        },
+        "description": "Send an SMS confirmation after booking is completed."
+      },
+      "messages": [
+        {
+          "type": "request-start",
+          "content": ""
+        },
+        {
+          "type": "request-response-delayed",
+          "content": "",
+          "timingMilliseconds": 60000
+        },
+        {
+          "type": "request-failed",
+          "content": "I'm having trouble connecting to the system."
+        }
+      ]
+    },
+    {
+      "type": "handoff",
+      "messages": [],
+      "destinations": [
+        {
+          "type": "assistant",
+          "assistantId": "553a6ddd-6505-400b-9169-c6a0cf894dec",
+          "description": "handoff_to_CustomerIntake"
+        }
+      ]
+    },
+    {
+      "type": "handoff",
+      "messages": [],
+      "destinations": [
+        {
+          "type": "assistant",
+          "assistantId": "7eb8818b-16ff-4236-b4d1-9eca3c7d9972",
+          "description": "handoff_to_ServiceCollection"
+        }
+      ]
+    }
+  ]
+}

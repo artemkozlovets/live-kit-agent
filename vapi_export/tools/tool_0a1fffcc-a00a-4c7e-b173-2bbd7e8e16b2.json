@@ -1,0 +1,86 @@
+{
+  "messages": [
+    {
+      "content": "Updating that now.",
+      "type": "request-start"
+    },
+    {
+      "content": "Done, I've updated your information.",
+      "type": "request-complete"
+    },
+    {
+      "content": "I couldn't update that. Let me try again.",
+      "type": "request-failed"
+    }
+  ],
+  "server": {
+    "url": "https://call-agent-development.up.railway.app/vapi/tools"
+  },
+  "id": "0a1fffcc-a00a-4c7e-b173-2bbd7e8e16b2",
+  "orgId": "24ad0433-8074-4bbf-97ef-f1c8f79ce486",
+  "function": {
+    "name": "update_customer",
+    "description": "Update an existing customer's information. Use this when a caller wants to change or correct ANY of their details (name, email, phone, address, company) AFTER they have already been registered. Only pass the fields that need to be updated. Do NOT use this for new customers - use register_new_customer instead.",
+    "parameters": {
+      "properties": {
+        "customer_id": {
+          "type": "string",
+          "description": "The existing customer's ID from the system (if known)"
+        },
+        "phone_number": {
+          "type": "string",
+          "description": "Current phone number to identify the customer (E.164 format)"
+        },
+        "updates": {
+          "type": "object",
+          "properties": {
+            "city": {
+              "description": "New city",
+              "type": "string"
+            },
+            "company_name": {
+              "description": "New company name",
+              "type": "string"
+            },
+            "email_address": {
+              "description": "New email address",
+              "type": "string"
+            },
+            "first_name": {
+              "description": "New first name",
+              "type": "string"
+            },
+            "last_name": {
+              "description": "New last name",
+              "type": "string"
+            },
+            "phone_number": {
+              "description": "New phone number (E.164 format)",
+              "type": "string"
+            },
+            "postalCode": {
+              "description": "New postal code",
+              "type": "string"
+            },
+            "state": {
+              "description": "New state (2-letter code)",
+              "type": "string"
+            },
+            "streetAddress": {
+              "description": "New street address",
+              "type": "string"
+            }
+          },
+          "description": "Only include fields that need to be changed"
+        }
+      },
+      "required": [
+        "updates"
+      ],
+      "type": "object"
+    }
+  },
+  "createdAt": "2026-01-16T03:47:41Z",
+  "updatedAt": "2026-01-16T03:47:41Z",
+  "type": "function"
+}
