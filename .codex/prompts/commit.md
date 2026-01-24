@@ -6,9 +6,13 @@ tags: [git, commit, version-control, documentation]
 # Commit Message Generator
 
 IMPORTANT: Output ONLY the git commands. Do not include any explanations or
-extra text. Return:
-1) `git add -A`
-2) `git commit -m "<MESSAGE>"`
+extra text.
+
+Return either:
+1) `git commit -m "<MESSAGE>" -- path/to/file1 path/to/file2` (tracked files; explicit paths)
+
+Or, if the commit includes brand-new files:
+1) `git restore --staged :/ && git add "path/to/file1" "path/to/file2" && git commit -m "<MESSAGE>" -- path/to/file1 path/to/file2`
 
 ## 🎯 ServiceBay Commit Format
 

@@ -1,9 +1,12 @@
-# Commit Helper (detailed, auto-stage + commit)
+# Commit Helper (atomic, explicit paths)
 
 ## Output Rule (VERY IMPORTANT)
 When producing the final answer, **run** the commands (don’t just print them):
-1) `git add -A`
-2) `git commit -m "<MESSAGE>"` (use a safe multi-line form, e.g. `git commit -m "$(cat <<'EOF' ... EOF)"`)
+1) `git diff --cached --name-only` (must be empty; don’t touch the index if it isn’t)
+2) `git commit -m "<MESSAGE>" -- path/to/file1 path/to/file2` (tracked files; explicit paths)
+
+If the commit includes brand-new files, use the one-liner:
+- `git restore --staged :/ && git add "path/to/file1" "path/to/file2" && git commit -m "<MESSAGE>" -- path/to/file1 path/to/file2`
 
 After committing, print a short confirmation (commit hash + subject line).
 
@@ -60,15 +63,17 @@ Use one of these category prefixes:
 - `[Temporary Rollback]` - Temporary reverts
 
 ## Automatic Mode (default)
-Do not ask the user to fill in a template or ask follow-up questions.
+Do not ask the user to fill in a template.
 
-### 1) Gather change data (use the staged snapshot)
+If you can’t confidently identify which files belong in this commit (e.g.,
+multiple unrelated changes are present), stop and ask rather than guessing.
+
+### 1) Gather change data (only the files you’re committing)
 - Check status: `git status --porcelain=v1 -b`
-- Stage all changes: `git add -A`
-- Use staged diff for analysis:
-  - `git diff --cached`
-  - `git diff --cached --numstat`
-  - `git diff --cached --name-status`
+- Ensure staging is empty: `git diff --cached --name-only`
+- Use diffs scoped to the commit’s file list:
+  - `git diff -- path/to/file1 path/to/file2`
+  - If you staged any brand-new files: `git diff --cached -- path/to/new_file1`
 
 ### 2) Pick the category (heuristics)
 Choose the most fitting category based on the files/changes:

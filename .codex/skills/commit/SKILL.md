@@ -1,11 +1,11 @@
 ---
 name: commit
-description: Generate a detailed commit message and run git add + git commit.
+description: Generate a detailed commit message and create an atomic commit (explicit paths; no git add -A).
 metadata:
-  short-description: Auto-stage and commit with a detailed message
+  short-description: Atomic commit with explicit paths
 ---
 
-# Commit Helper (detailed, auto-stage + commit)
+# Commit Helper (atomic, explicit paths)
 
 ## REQUIRED: Read Reference First
 Before doing anything else, open and read:
@@ -17,8 +17,8 @@ Do not proceed until it is read.
 We want commits that are easy to understand later (especially in future Codex
 sessions). This skill:
 - Writes a multi-line commit message (subject + body) describing what/why/how.
-- Stages changes.
-- Creates the commit for you.
+- Creates an **atomic** commit (commit only the files you touched).
+- Avoids the “stage everything” workflow (`git add -A`) so parallel agents can work safely in one repo.
 
 ## Execution Rule (VERY IMPORTANT)
 This skill should **run** the commands (via `functions.exec_command`), not just
@@ -34,12 +34,15 @@ available) the current session/task context.
 
 Workflow:
 1) Check status: `git status --porcelain=v1 -b`
-2) Stage all changes: `git add -A`
-3) Gather data from the staged snapshot:
-   - `git diff --cached`
-   - `git diff --cached --numstat`
-   - `git diff --cached --name-status`
-4) Generate a detailed commit message per the reference.
-5) Commit using a multi-line message (safe quoting), e.g.:
-   - `git commit -m "$(cat <<'EOF' ... EOF)"`
-6) Print a short confirmation including the new commit hash and subject line.
+2) Ensure the staging area is clean: `git diff --cached --name-only`
+   - If anything is staged, stop and ask before changing the index.
+3) Identify the exact files to commit (only the files you touched in this task).
+4) If any of those files are brand-new, stage only those paths:
+   - `git add "path/to/file1" "path/to/file2"`
+5) Gather change data for just those paths:
+   - Tracked edits/deletes: `git diff -- path/to/file1 path/to/file2`
+   - Staged new files: `git diff --cached -- path/to/new_file1 path/to/new_file2`
+6) Generate a detailed commit message per the reference.
+7) Commit using a multi-line message (safe quoting) and explicit paths, e.g.:
+   - `git commit -m "$(cat <<'EOF' ... EOF)" -- path/to/file1 path/to/file2`
+8) Print a short confirmation including the new commit hash and subject line.
