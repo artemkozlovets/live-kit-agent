@@ -49,6 +49,15 @@ python -m livekit_agent.agent dev
 
 Note: if `GOOGLE_API_KEY` is not set, the agent falls back to a simple `then_action` string parser (useful for local testing, not production-grade).
 
+## Run the tools backend locally (debug)
+The agent expects a Vapi-compatible `POST /vapi/tools` endpoint.
+
+If you don't have Postgres configured yet, you can run a non-durable in-memory backend:
+
+```bash
+USE_IN_MEMORY_DB=1 .venv/bin/python -m uvicorn api_server.server.fastapi_app:app --host 127.0.0.1 --port 8000
+```
+
 ## Deploy / debug with Docker
 This is the easiest way to run the agent with consistent ports, structured logs, and scrapeable metrics.
 

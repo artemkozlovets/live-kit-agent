@@ -97,12 +97,17 @@ class NotImplementedDatabaseClient:
     def create_service_order(self, store_service_order_args: StoreServiceOrderArgs) -> str:
         raise NotImplementedError("Database client is not configured yet.")
 
+def _truthy_env(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+_IN_MEMORY_DATABASE_CLIENT: object | None = None
+
 
 def get_database_client() -> DatabaseClient:
     """Get the database client.
 
     Uses PostgresDatabaseClient if DATABASE_URL is set,
-    otherwise falls back to NotImplementedDatabaseClient.
+    otherwise falls back to NotImplementedDatabaseClient unless USE_IN_MEMORY_DB=1.
     """
     database_url = os.environ.get("DATABASE_URL")
     if database_url:
@@ -113,5 +118,15 @@ def get_database_client() -> DatabaseClient:
 
         connection = psycopg2.connect(database_url)
         return PostgresDatabaseClient(connection)
+
+    if _truthy_env("USE_IN_MEMORY_DB"):
+        # Reason: In-memory DB is convenient for local debugging without Postgres.
+        # It is intentionally non-durable and should not be used in production.
+        from api_server.server.in_memory_database_client import InMemoryDatabaseClient
+
+        global _IN_MEMORY_DATABASE_CLIENT
+        if _IN_MEMORY_DATABASE_CLIENT is None:
+            _IN_MEMORY_DATABASE_CLIENT = InMemoryDatabaseClient()
+        return _IN_MEMORY_DATABASE_CLIENT  # type: ignore[return-value]
 
     return NotImplementedDatabaseClient()

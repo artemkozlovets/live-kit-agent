@@ -515,7 +515,6 @@ async def entrypoint(ctx: JobContext) -> None:
     )
 
     await session.start(agent=agent, room=ctx.room)
-    await ctx.connect()
 
 
 if __name__ == "__main__":

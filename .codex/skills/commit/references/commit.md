@@ -1,13 +1,13 @@
-# Commit Message Generator (ServiceBay)
+# Commit Helper (detailed, auto-stage + commit)
 
 ## Output Rule (VERY IMPORTANT)
-When producing the final answer, output **ONLY** the git commands.
-Do not include explanations or any extra text.
-Format:
+When producing the final answer, **run** the commands (don’t just print them):
 1) `git add -A`
-2) `git commit -m "<MESSAGE>"`
+2) `git commit -m "<MESSAGE>"` (use a safe multi-line form, e.g. `git commit -m "$(cat <<'EOF' ... EOF)"`)
 
-## ServiceBay Commit Format
+After committing, print a short confirmation (commit hash + subject line).
+
+## Commit Format (default: include a body)
 
 ### Summary line (always required)
 ```
@@ -20,30 +20,29 @@ Rules:
 - Keep the summary line ≤ 72 characters total (including `[Category] `).
 - Be specific (avoid “updates”, “various fixes”).
 
-### Complex commits (add body sections)
-For significant changes, add a body with sections (in this order when relevant):
+### Body (default: include these sections)
+Use markdown-style headings and bullets for readability. Keep every statement
+grounded in the diff and/or the current session context (don’t speculate).
 
-Required sections for complex commits:
+Required sections:
 - `## What Changed` **or** `## Problems Fixed`
-- `## Solutions`
-- `## Impact`
-- `## Files Changed`
+- `## Why` (use current task/session intent when available)
+- `## How to Verify` (tests/commands you actually ran; otherwise explicitly say `Not run`)
+- `## Files Changed` (repo-relative paths, one per line)
 
-Additionally required for fixes:
-- `## Root Causes` (required for `[Critical Fix]` and `[Temporary Rollback]`)
+Additionally required for certain categories:
+- `## Root Causes` (required for `[Critical Fix]` and `[Temporary Rollback]`, but only when it is clear from the diff/context)
 
 Optional sections:
-- `## Testing Notes`
+- `## Solutions` (useful for multi-file changes)
+- `## Impact` (user-facing behavior, performance, ops, etc.)
 - `## Related Issues/PRs`
 - `## Next Steps`
 
 Formatting rules:
 - Use bullets (`- ...`) for readability.
-- Impact lines use emojis sparingly:
-  - Prefix positives with `✅`
-  - Prefix caveats with `⚠️`
-  - Prefix critical risks with `🔴`
-- Files use repo-relative paths and include line numbers / sections when possible.
+- Avoid emojis.
+- Files use repo-relative paths and include brief qualifiers when helpful: `(new)`, `(delete)`, `(rename)`.
 
 ## Categories
 Use one of these category prefixes:
@@ -61,23 +60,15 @@ Use one of these category prefixes:
 - `[Temporary Rollback]` - Temporary reverts
 
 ## Automatic Mode (default)
-Do not ask the user to fill in a template.
+Do not ask the user to fill in a template or ask follow-up questions.
 
-Infer the commit message from the current git changes.
-Do not ask follow-up questions; if anything is ambiguous, choose the simplest
-accurate one-line message.
-
-After generating the message, emit the two commands in the required format.
-
-### 1) Gather change data (staged preferred)
+### 1) Gather change data (use the staged snapshot)
 - Check status: `git status --porcelain=v1 -b`
-- If staged changes exist, use:
+- Stage all changes: `git add -A`
+- Use staged diff for analysis:
   - `git diff --cached`
   - `git diff --cached --numstat`
-- If nothing is staged, use:
-  - `git diff`
-  - `git diff --numstat`
-  - Include untracked files from `git status --porcelain` as `(new)`
+  - `git diff --cached --name-status`
 
 ### 2) Pick the category (heuristics)
 Choose the most fitting category based on the files/changes:
@@ -94,34 +85,22 @@ and you can write a non-speculative `## Root Causes` section.
 
 ### 3) Generate the summary line (always)
 - Imperative mood, specific, ≤ 72 chars total (including `[Category] `).
-- Base the nouns/verbs on what actually changed in the diff (don’t guess).
+- Base nouns/verbs on what actually changed in the diff (don’t guess).
 
-### 4) Simple vs complex (automatic)
-Use the **simple** one-line format when changes are small and focused.
-Use the **complex** format when the change spans multiple files/components or is large.
-
-When you choose the complex format, include (at minimum):
-- `## What Changed` **or** `## Problems Fixed`
-- `## Solutions`
-- `## Impact` (✅ for positives; ⚠️ for caveats the diff implies)
-- `## Files Changed` (repo-relative paths + `(new)` or `(+A/-D)` from `--numstat`)
+### 4) Always include a body (default)
+Default to the multi-line format with the required sections, even for small
+changes. Keep it short (2-6 bullets per section).
 
 ## Decision Rules (how to generate)
 1. **Pick the category** from the allowed list (normalize obvious variants like `critical fix` → `Critical Fix`).
 2. **Write the summary** in imperative mood and keep ≤ 72 chars total.
-3. **Simple vs complex**
-   - If the change is straightforward, output only the summary line.
-   - If the change is significant OR the user provides multi-part context, output the complex format.
-4. **Complex requirements**
-   - Must include `What Changed` or `Problems Fixed`.
-   - Must include `Solutions`, `Impact`, `Files Changed`.
-   - If category is `[Critical Fix]` or `[Temporary Rollback]`, include `Root Causes`.
-5. **Impact markers**
-   - Default to `✅` for positive outcomes unless the user explicitly marks a caveat/risk.
+3. **Write the required body sections** (`What Changed/Problems Fixed`, `Why`, `How to Verify`, `Files Changed`).
+4. **No speculation**: if you can’t justify a claim from the diff/context, omit it or phrase it conservatively.
+5. **Testing honesty**: only claim tests ran if they actually ran in this session.
 
 ## Examples
 
-### Simple
+### Simple (rare; only when explicitly requested)
 ```
 [Feature] Add user profile page with avatar upload
 ```
@@ -135,15 +114,16 @@ When you choose the complex format, include (at minimum):
 - Map component with technician markers
 - Auto-reconnect on connection loss
 
+## Why
+- Provide real-time technician visibility without manual refresh
+
+## How to Verify
+- Not run
+
 ## Solutions
 - WebSocket client in lib/websocket-client.ts
 - Map component using react-leaflet
 - useGPSTracker custom hook for state management
-
-## Impact
-✅ Real-time technician tracking
-✅ Improved dispatcher visibility
-✅ Reduced manual check-in calls
 
 ## Files Changed
 - apps/dispatcher-web/src/lib/websocket-client.ts (new)
@@ -167,10 +147,8 @@ When you choose the complex format, include (at minimum):
 - Continue to next field instead of returning early on duplicates
 - Prompt next question immediately after acknowledging contact
 
-## Impact
-✅ No dead air in conversation flow
-✅ Natural conversation progression
-✅ Improved user experience
+## How to Verify
+- Not run
 
 ## Files Changed
 - packages/api/src/websocket/voice-stream-manager.ts (lines 893-901)
