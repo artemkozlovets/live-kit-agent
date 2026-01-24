@@ -17,3 +17,22 @@ prefix_rule(
     ],
 )
 
+# Allow Railway CLI commands without prompting for approval.
+#
+# This applies when Codex wants to execute `railway` outside the sandbox (or otherwise
+# requires approval) and matches any command whose argv starts with `railway`.
+prefix_rule(
+    pattern=["railway"],
+    decision="allow",
+    explanation="Allow Railway CLI (`railway`).",
+    match=[
+        "railway",
+        "railway --help",
+        "railway status",
+        "railway logs --lines 200 --filter \"@level:error\"",
+    ],
+    not_match=[
+        "echo railway",
+        "railwayx --help",
+    ],
+)
