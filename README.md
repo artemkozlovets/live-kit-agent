@@ -34,7 +34,7 @@ Environment variables:
 - `DEEPGRAM_API_KEY`
 - `DEEPGRAM_STT_MODEL` (optional, defaults to `flux-general-en`)
 - `DEEPGRAM_EAGER_EOT_THRESHOLD` (optional, defaults to `0.4`)
-- `CARTESIA_API_KEY` (optional: `CARTESIA_VOICE_ID`, `CARTESIA_TTS_MODEL`)
+- `CARTESIA_API_KEY` (optional: `CARTESIA_VOICE_ID`, `CARTESIA_TTS_MODEL`, `CARTESIA_SPEED`, `CARTESIA_TEXT_PACING`)
 - `GOOGLE_API_KEY` (optional: `GOOGLE_LLM_MODEL`, defaults to `gemini-2.5-flash`)
 
 Run in console mode (local, no telephony):

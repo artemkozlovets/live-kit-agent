@@ -59,6 +59,11 @@ class FlowController:
             )
         ]
 
+    def bypass_preflight(self, *, callback_number: str) -> None:
+        self.confirmed_callback_number = callback_number
+        self.normalized_callback_number = callback_number
+        self._customer_checked = True
+
     def on_user_callback_confirmation(self, *, confirmed: bool) -> list[Action]:
         if confirmed:
             if not self.sip_phone_number:

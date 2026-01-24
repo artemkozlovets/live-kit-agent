@@ -27,6 +27,20 @@ logger = logging.getLogger("livekit-agent-vapi-adapter")
 _AFFIRMATIVE_RE = re.compile(r"\b(yes|yeah|yep|correct|that's right|right|sure|ok|okay)\b", re.I)
 _NEGATIVE_RE = re.compile(r"\b(no|nope|nah|negative|not really|wrong)\b", re.I)
 _PHONE_RE = re.compile(r"(\+?\d[\d\-\(\)\s]{7,}\d)")
+_SPOKEN_DIGIT_RE = re.compile(r"[a-zA-Z]+")
+_SPOKEN_DIGITS = {
+    "zero": "0",
+    "oh": "0",
+    "one": "1",
+    "two": "2",
+    "three": "3",
+    "four": "4",
+    "five": "5",
+    "six": "6",
+    "seven": "7",
+    "eight": "8",
+    "nine": "9",
+}
 
 
 @dataclass(frozen=True)
@@ -39,6 +53,9 @@ class ParsedToolCall:
 def _extract_phone_number(text: str) -> str | None:
     match = _PHONE_RE.search(text)
     if not match:
+        spoken_digits = _extract_spoken_digits(text)
+        if spoken_digits:
+            return spoken_digits
         return None
 
     raw = match.group(1)
@@ -47,6 +64,15 @@ def _extract_phone_number(text: str) -> str | None:
         digits = digits.lstrip("+")
         digits = f"+{digits}"
     return digits.strip() or None
+
+
+def _extract_spoken_digits(text: str) -> str | None:
+    tokens = _SPOKEN_DIGIT_RE.findall(text.lower())
+    digits = [(_SPOKEN_DIGITS.get(token)) for token in tokens]
+    digits = [digit for digit in digits if digit is not None]
+    if len(digits) < 7:
+        return None
+    return "".join(digits)
 
 
 def _extract_sip_phone_number(room: rtc.Room) -> str | None:
@@ -110,6 +136,12 @@ class VapiAdapterAgent(Agent):
 
         self._flow = FlowController(sip_phone_number=sip_phone_number)
         self._sip_phone_number: str | None = sip_phone_number
+        self._skip_preflight = os.getenv("SKIP_CALLBACK_PREFLIGHT", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "y",
+        }
         self._started = False
         self._entered_main_flow = False
         self._fatal_error = False
@@ -180,6 +212,10 @@ class VapiAdapterAgent(Agent):
             return
 
         self._started = True
+        if self._skip_preflight and not self._sip_phone_number:
+            self._flow.bypass_preflight(callback_number="web")
+            return
+
         await self._run_actions(self._flow.start())
 
     async def _handle_preflight_turn(self, user_text: str) -> None:
@@ -402,12 +438,22 @@ async def entrypoint(ctx: JobContext) -> None:
         eager_eot_threshold = 0.4
     tts_model = os.getenv("CARTESIA_TTS_MODEL", "sonic-3")
     tts_voice = os.getenv("CARTESIA_VOICE_ID", "794f9389-aac1-45b6-b726-9d9369183238")
+    tts_speed_raw = os.getenv("CARTESIA_SPEED", "").strip()
+    tts_speed: float | None = None
+    if tts_speed_raw:
+        try:
+            tts_speed = float(tts_speed_raw)
+        except ValueError:
+            logger.warning("Invalid CARTESIA_SPEED=%r (expected float); ignoring", tts_speed_raw)
+
+    text_pacing_raw = os.getenv("CARTESIA_TEXT_PACING", "").strip().lower()
+    text_pacing = text_pacing_raw in {"1", "true", "yes", "y", "on"}
 
     session = AgentSession(
         # Use Deepgram's STT-based endpointing (closest parity with Vapi's current settings).
         turn_detection="stt",
         stt=deepgram.STTv2(model=stt_model, eager_eot_threshold=eager_eot_threshold),
-        tts=cartesia.TTS(model=tts_model, voice=tts_voice),
+        tts=cartesia.TTS(model=tts_model, voice=tts_voice, speed=tts_speed, text_pacing=text_pacing),
         vad=ctx.proc.userdata["vad"],
     )
 

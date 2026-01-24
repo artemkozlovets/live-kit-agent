@@ -1,0 +1,19 @@
+# Allow LiveKit CLI commands without prompting for approval.
+#
+# This applies when Codex wants to execute `lk` outside the sandbox (or otherwise
+# requires approval) and matches any command whose argv starts with `lk`.
+prefix_rule(
+    pattern=["lk"],
+    decision="allow",
+    explanation="Allow LiveKit CLI (`lk`).",
+    match=[
+        "lk",
+        "lk --help",
+        "lk room list",
+    ],
+    not_match=[
+        "echo lk",
+        "lkx --help",
+    ],
+)
+
