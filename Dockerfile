@@ -5,14 +5,18 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
+RUN useradd -m -u 10001 appuser
+
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY . /app
 
-RUN chmod +x /app/scripts/run_worker.sh
+RUN chown -R appuser:appuser /app
+
+USER appuser
 
 EXPOSE 8081
 EXPOSE 9090
 
-CMD ["/app/scripts/run_worker.sh"]
+CMD ["python", "-m", "livekit_agent.agent", "start"]
