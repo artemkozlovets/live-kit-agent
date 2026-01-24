@@ -2,12 +2,39 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import os
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
 from livekit_agent.vapi_payload import build_vapi_tool_call_request
+
+logger = logging.getLogger("livekit-agent-vapi-adapter.backend-tools")
+
+
+def _truthy_env(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _mask_phone_like(value: str) -> str:
+    if _truthy_env("LOG_PII"):
+        return value
+
+    stripped = value.strip()
+    if stripped.startswith("+") and stripped[1:].isdigit() and len(stripped) >= 8:
+        return f"+{stripped[1:3]}{'*' * (len(stripped) - 6)}{stripped[-4:]}"
+    if stripped.isdigit() and len(stripped) >= 8:
+        return f"{'*' * (len(stripped) - 4)}{stripped[-4:]}"
+    return value
+
+
+def _safe_keys(value: object) -> list[str]:
+    if not isinstance(value, dict):
+        return []
+    return sorted([str(key) for key in value.keys()])
 
 
 class BackendToolsClientError(Exception):
@@ -49,6 +76,19 @@ class BackendToolsClient:
         tool_name: str,
         tool_arguments: dict[str, Any],
     ) -> dict[str, Any]:
+        started = time.perf_counter()
+        masked_call_id = _mask_phone_like(call_id)
+
+        logger.debug(
+            "calling backend tool",
+            extra={
+                "call_id": masked_call_id,
+                "tool_name": tool_name,
+                "tool_call_id": tool_call_id,
+                "argument_keys": sorted(tool_arguments.keys()),
+            },
+        )
+
         payload = build_vapi_tool_call_request(
             call_id=call_id,
             sip_phone_number=sip_phone_number,
@@ -62,8 +102,27 @@ class BackendToolsClient:
         try:
             response = await post_json(self.tools_url, payload)
         except TimeoutError as exc:
+            logger.warning(
+                "backend tools request timed out",
+                extra={
+                    "call_id": masked_call_id,
+                    "tool_name": tool_name,
+                    "tool_call_id": tool_call_id,
+                    "elapsed_ms": int((time.perf_counter() - started) * 1000),
+                },
+            )
             raise BackendToolsTransportError("Backend tools request timed out") from exc
         except Exception as exc:
+            logger.warning(
+                "backend tools request failed",
+                extra={
+                    "call_id": masked_call_id,
+                    "tool_name": tool_name,
+                    "tool_call_id": tool_call_id,
+                    "elapsed_ms": int((time.perf_counter() - started) * 1000),
+                },
+                exc_info=exc,
+            )
             raise BackendToolsTransportError("Backend tools request failed") from exc
 
         results = response.get("results") if isinstance(response, dict) else None
@@ -81,6 +140,16 @@ class BackendToolsClient:
 
         raw_result = matched_result.get("result")
         if isinstance(raw_result, dict):
+            logger.debug(
+                "backend tool result received",
+                extra={
+                    "call_id": masked_call_id,
+                    "tool_name": tool_name,
+                    "tool_call_id": tool_call_id,
+                    "elapsed_ms": int((time.perf_counter() - started) * 1000),
+                    "result_keys": _safe_keys(raw_result),
+                },
+            )
             return raw_result
         if not isinstance(raw_result, str):
             raise ToolResultParseError("Tool result is not a JSON string")
@@ -93,6 +162,16 @@ class BackendToolsClient:
         if not isinstance(parsed, dict):
             raise ToolResultParseError("Tool result JSON must be an object")
 
+        logger.debug(
+            "backend tool result received",
+            extra={
+                "call_id": masked_call_id,
+                "tool_name": tool_name,
+                "tool_call_id": tool_call_id,
+                "elapsed_ms": int((time.perf_counter() - started) * 1000),
+                "result_keys": _safe_keys(parsed),
+            },
+        )
         return parsed
 
     async def _default_post_json(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:

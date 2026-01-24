@@ -23,6 +23,42 @@ from livekit_agent.tools import load_tool_schemas
 
 logger = logging.getLogger("livekit-agent-vapi-adapter")
 
+_INT_ENV_RE = re.compile(r"^\d+$")
+
+
+def _int_env(name: str) -> int | None:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return None
+    if not _INT_ENV_RE.match(raw):
+        logger.warning("Invalid %s=%r (expected int); ignoring", name, raw)
+        return None
+    return int(raw)
+
+
+def _build_server() -> AgentServer:
+    kwargs: dict[str, Any] = {}
+    host = os.getenv("HOST", "").strip() or os.getenv("LIVEKIT_WORKER_HOST", "").strip()
+    if host:
+        kwargs["host"] = host
+
+    port = _int_env("PORT") or _int_env("LIVEKIT_WORKER_PORT")
+    if port is not None:
+        kwargs["port"] = port
+
+    prometheus_port = _int_env("PROMETHEUS_PORT") or _int_env("LIVEKIT_PROMETHEUS_PORT")
+    if prometheus_port is not None:
+        kwargs["prometheus_port"] = prometheus_port
+
+    prometheus_multiproc_dir = (
+        os.getenv("PROMETHEUS_MULTIPROC_DIR", "").strip()
+        or os.getenv("LIVEKIT_PROMETHEUS_MULTIPROC_DIR", "").strip()
+    )
+    if prometheus_multiproc_dir:
+        kwargs["prometheus_multiproc_dir"] = prometheus_multiproc_dir
+
+    return AgentServer(**kwargs)
+
 
 _AFFIRMATIVE_RE = re.compile(r"\b(yes|yeah|yep|correct|that's right|right|sure|ok|okay)\b", re.I)
 _NEGATIVE_RE = re.compile(r"\b(no|nope|nah|negative|not really|wrong)\b", re.I)
@@ -410,7 +446,7 @@ class VapiAdapterAgent(Agent):
         self.session.say("I'm having trouble connecting — please call back.")
 
 
-server = AgentServer()
+server = _build_server()
 
 
 def _prewarm(proc: JobProcess) -> None:
@@ -420,7 +456,7 @@ def _prewarm(proc: JobProcess) -> None:
 server.setup_fnc = _prewarm
 
 
-@server.rtc_session()
+@server.rtc_session(agent_name=os.getenv("LIVEKIT_AGENT_NAME", "").strip())
 async def entrypoint(ctx: JobContext) -> None:
     load_dotenv()
     ctx.log_context_fields = {"room": ctx.room.name}
@@ -448,6 +484,21 @@ async def entrypoint(ctx: JobContext) -> None:
 
     text_pacing_raw = os.getenv("CARTESIA_TEXT_PACING", "").strip().lower()
     text_pacing = text_pacing_raw in {"1", "true", "yes", "y", "on"}
+
+    logger.info(
+        "starting agent session",
+        extra={
+            "backend_tools_url": backend_tools_url,
+            "tool_llm_enabled": bool(tool_llm),
+            "tool_llm_model": llm_model if tool_llm else None,
+            "stt_model": stt_model,
+            "eager_eot_threshold": eager_eot_threshold,
+            "tts_model": tts_model,
+            "tts_voice": tts_voice,
+            "tts_speed": tts_speed,
+            "tts_text_pacing": text_pacing,
+        },
+    )
 
     session = AgentSession(
         # Use Deepgram's STT-based endpointing (closest parity with Vapi's current settings).

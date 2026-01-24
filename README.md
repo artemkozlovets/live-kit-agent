@@ -48,3 +48,21 @@ python -m livekit_agent.agent dev
 ```
 
 Note: if `GOOGLE_API_KEY` is not set, the agent falls back to a simple `then_action` string parser (useful for local testing, not production-grade).
+
+## Deploy / debug with Docker
+This is the easiest way to run the agent with consistent ports, structured logs, and scrapeable metrics.
+
+Run:
+```bash
+docker compose up --build
+```
+
+Endpoints (from `docker-compose.yml`):
+- Health check: `http://localhost:8081/`
+- Worker info: `http://localhost:8081/worker`
+- Prometheus metrics: `http://localhost:9090/metrics`
+
+Useful env vars:
+- `LOG_LEVEL=DEBUG` to increase verbosity
+- `LOG_PII=1` to disable call-id masking in backend tool logs (not recommended for production)
+- `LIVEKIT_AGENT_NAME=...` to enable explicit dispatch
