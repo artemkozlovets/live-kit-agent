@@ -49,3 +49,19 @@ When writing tests, include:
 ### 🧠 AI Behavior Rules
 
 - **Never assume missing context. Ask questions if uncertain.**
+
+### 🧾 Git & Commits
+
+- **Safety first:** ABSOLUTELY NEVER run destructive git operations (e.g., `git reset --hard`, `rm`, `git checkout`, `git restore` to an older commit) unless the user gives an explicit, written instruction in this conversation. Treat these commands as catastrophic; if you’re even slightly unsure, stop and ask. (In Cursor/Codex Web, use the tooling’s capabilities as needed.)
+- **Respect in-flight work:** coordinate before reverting or deleting work you didn’t author. If you’re unsure whether a git operation would affect other agents’ edits, stop and ask.
+  - Before deleting a file to “fix” a type/lint failure: stop and ask the user first. Deleting someone else’s work to silence an error is not acceptable without explicit approval.
+- **Moving/renaming allowed:** moving/renaming files is OK. Restoring/reverting is only OK when the change is yours or explicitly requested.
+- **Cleanups:** delete unused/obsolete files when your changes make them irrelevant (refactors, feature removals). If unsure about other agents’ in-flight work, coordinate instead of deleting.
+- **Keep commits atomic:** commit only the files you touched and list each path explicitly.
+  - Before committing: check `git status` and `git diff --cached`.
+  - For tracked files: `git commit -m "<scoped message>" -- path/to/file1 path/to/file2`
+  - For brand-new files: `git restore --staged :/ && git add "path/to/file1" "path/to/file2" && git commit -m "<scoped message>" -- path/to/file1 path/to/file2`
+    - Note: `git restore --staged :/` is only for clearing the index; do not use `git restore` to revert other people’s work.
+- **Quote risky paths:** quote any git paths containing brackets/parentheses (e.g., `"src/app/[candidate]/**"`) so the shell doesn’t treat them as globs or subshells.
+- **Rebase without editors:** set `GIT_EDITOR=:` and `GIT_SEQUENCE_EDITOR=:` (or pass `--no-edit`) so git doesn’t open an editor.
+- **Never amend:** don’t run `git commit --amend` unless you have explicit written approval in the task thread.
