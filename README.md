@@ -15,6 +15,18 @@ python -m venv .venv
 .venv/bin/python -m pytest -q
 ```
 
+## Run evals (offline)
+Runs deterministic, offline conversation-level evals against a mocked backend (no network calls).
+
+```bash
+.venv/bin/python -m livekit_agent.evals
+```
+
+Helpful options:
+- List scenarios: `.venv/bin/python -m livekit_agent.evals --list`
+- Run one scenario: `.venv/bin/python -m livekit_agent.evals --scenario preflight_no_sip_speak_first`
+- If you see `sysctlbyname('hw.logicalcpu') Operation not permitted`: add `NUM_CPUS=2` to your environment.
+
 ## Run the agent (Phase 4.1+)
 Environment variables:
 - `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`
