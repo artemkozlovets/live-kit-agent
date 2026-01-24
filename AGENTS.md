@@ -19,13 +19,14 @@ When presented with a request YOU MUST:
 ### 🧱 Code Structure & Modularity
 
 - **Take the time to understand the docs**
+- **open docs before coding**
 - **Get to root of the problem** Never write hacky work arounds
 - **Write Elegant Code** Write the most minimal code to get the job done
 - **Never Break Up nested Values:** When working with a value that is part of a larger
   structure or has a parent object, always import or pass the entire parent structure
   as an argument at boundaries (controllers/services). It's OK to extract nested values inside pure helper functions (no DB/network/files) for readability/testability.
 - **Use dependency injection (DI) for testability** Pass in I/O (DB/HTTP/files) and non-determinism (time/randomness/UUID). Don't force DI for pure data helpers unless tests need it.
-- **Try to keep files under 200 lines of code.** If a file approaches this limit, refactor by splitting it into modules or helper files. Small/contained changes can exceed 200 lines when necessary. 
+- **Try to keep files under 500 lines of code.** If a file approaches this limit, refactor by splitting it into modules or helper files. Small/contained changes can exceed 500 lines when necessary. 
 Ignore this rule for Specs, Docs, and Tdd plans.
 - **Organize code into modules whcih can easily be added and removed**, for example, grouped by architectural layer, controller, service for web or driver, client for embedded systems.
 - **Strive for symmetry among all projects**: All projects, whatever the language may be should follow the same patterns making a nice symmetry amoing the different codebases. The only exception should be for language idioms and idiosyncrasies.
@@ -65,3 +66,11 @@ When writing tests, include:
 - **Quote risky paths:** quote any git paths containing brackets/parentheses (e.g., `"src/app/[candidate]/**"`) so the shell doesn’t treat them as globs or subshells.
 - **Rebase without editors:** set `GIT_EDITOR=:` and `GIT_SEQUENCE_EDITOR=:` (or pass `--no-edit`) so git doesn’t open an editor.
 - **Never amend:** don’t run `git commit --amend` unless you have explicit written approval in the task thread.
+
+### 🧠 Critical Thinking
+
+- Fix root cause (not band-aid).
+- Unsure: read more code; if still stuck, ask w/ short options.
+- Conflicts: call out; pick safer path.
+- Unrecognized changes: assume other agent; keep going; focus your changes. If it causes issues, stop + ask user.
+- Leave breadcrumb notes in thread.
