@@ -8,6 +8,7 @@ When presented with a request YOU MUST:
    - Before implementation, search `docs/` (and `README.md`) for relevant guidance/specs; treat repo docs as authoritative. Only use web/docs outside the repo if `docs/` doesn't cover it or appears outdated.
    - If the task mentions LiveKit anywhere, query the LiveKit Docs MCP server (`livekit-docs`) for the latest info; if behavior is unclear, do a quick web search.
    - If the task is LiveKit-related and touches external APIs/SDKs/libraries/tooling (or we're uncertain about behavior), use web search for the latest docs.
+   - For any questions about Railway or LiveKit state/config, verify using their CLI tools (`railway`, `lk`).
 2. Use TDD Approach: Figure out how to validate that the task is complete and working as expected. Whether using a CLI tool like curl, or ssh command or writing unit/integration test
 3. Start with the smallest relevant existing test (happy path)
 4. See the test fail. 

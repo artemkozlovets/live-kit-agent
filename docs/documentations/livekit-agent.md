@@ -64,6 +64,8 @@ Two modes:
 - `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`
 - `DEEPGRAM_API_KEY` (STT)
 - `BACKEND_TOOLS_URL` (defaults to a dev URL in `livekit_agent/agent.py`)
+  - Railway base: `https://call-agent-development.up.railway.app/`
+  - Set: `https://call-agent-development.up.railway.app/vapi/tools`
 
 ### Optional providers
 - `CARTESIA_API_KEY` (TTS)
