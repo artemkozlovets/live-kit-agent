@@ -2,6 +2,11 @@
 
 This repo contains the Milestone 1 foundations for migrating the voice runtime from Vapi to LiveKit while keeping the backend tool contract (`POST /vapi/tools`) unchanged.
 
+## Repo layout (two services, one repo)
+- LiveKit agent service (deploy to LiveKit Cloud): `livekit_agent/`
+- FastAPI tools backend service (deploy to Railway): `api_server/`
+- Shared tool schemas (source of truth): `squad/assistants/*.json`
+
 ## What’s implemented
 - Vapi-shaped tool-call payload builder: `livekit_agent/vapi_payload.py`
 - Backend tools client (async) with typed errors: `livekit_agent/backend_tools_client.py`
@@ -12,7 +17,7 @@ This repo contains the Milestone 1 foundations for migrating the voice runtime f
 ```bash
 python -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python -m pytest -q
+./scripts/test_all.sh
 ```
 
 ## Run evals (offline)
@@ -57,6 +62,13 @@ If you don't have Postgres configured yet, you can run a non-durable in-memory b
 ```bash
 USE_IN_MEMORY_DB=1 .venv/bin/python -m uvicorn api_server.server.fastapi_app:app --host 127.0.0.1 --port 8000
 ```
+
+## Deploy the tools backend to Railway
+This repo includes separate Dockerfiles for the agent vs backend:
+- Agent: `Dockerfile`
+- Backend: `Dockerfile.backend` (uses `requirements.backend.txt`)
+
+In your Railway backend service, set the Dockerfile path to `Dockerfile.backend` and ensure `DATABASE_URL` is set.
 
 ## Deploy / debug with Docker
 This is the easiest way to run the agent with consistent ports, structured logs, and scrapeable metrics.

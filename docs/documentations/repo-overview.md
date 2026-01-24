@@ -51,6 +51,7 @@
 
 ## Run/verify (copy/paste)
 - Agent tests (default): `python -m pytest -q`
+- All tests (agent + backend): `./scripts/test_all.sh`
 - Offline evals: `python -m livekit_agent.evals`
 - Run agent (console): `python -m livekit_agent.agent console`
 - Run tools backend (in-memory DB): `USE_IN_MEMORY_DB=1 python -m uvicorn api_server.server.fastapi_app:app --host 127.0.0.1 --port 8000`

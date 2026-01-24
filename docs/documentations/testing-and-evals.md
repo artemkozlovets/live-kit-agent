@@ -17,6 +17,11 @@ By default, pytest is configured to run only `livekit_agent/tests`:
 python -m pytest -q
 ```
 
+### Run all tests (agent + API server)
+```bash
+./scripts/test_all.sh
+```
+
 ### Run API server tests
 There is also a test suite under `api_server/tests/`, but it is not included in `pytest.ini`’s `testpaths`.
 

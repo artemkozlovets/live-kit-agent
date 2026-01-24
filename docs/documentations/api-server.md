@@ -9,6 +9,7 @@
 - Main contract surface:
   - `POST /vapi/tools` → returns `{"results":[...]}` (plus optional `destination` for handoffs).
   - `POST /vapi/assistant-request` → returns `{squadId, squadOverrides:{variableValues:{...}}}` for Vapi phone routing.
+- For Railway deploys in this monorepo, use `Dockerfile.backend` (installs `requirements.backend.txt`).
 
 ## Entry points / key files
 - FastAPI app wiring: `api_server/server/fastapi_app.py`
