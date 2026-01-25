@@ -43,6 +43,10 @@ Currently:
   - Adds `units.unit_nickname` and `service_orders.location_address`
   - Adds an index on `(customer_id, unit_nickname)`
   - Uses `CREATE INDEX CONCURRENTLY` (must run outside a transaction)
+- `migrations/002_add_session_reports.sql`
+  - Adds `session_reports` table for programmatic agent session report exports
+  - Stores one JSONB report per LiveKit room (`room_name` primary key)
+  - Adds an index on `received_at DESC` for “most recent” lookups
 
 ## Related docs
 - `docs/documentations/api-server.md`

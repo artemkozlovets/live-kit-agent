@@ -18,9 +18,14 @@ With those, you can join a room from the browser and start a realtime audio/vide
 - **Local dev**: use `ws://localhost:7880` (if you’re running LiveKit locally).
 
 ### 2) Generate a participant token
-Use the LiveKit CLI (preferred for dev) or the Cloud dashboard.
+Pick one:
 
-**CLI (Cloud example):**
+**Option A (dev): LiveKit Cloud sandbox token server**
+- Docs: `https://docs.livekit.io/frontends/authentication/tokens/sandbox-token-server/`
+- Useful when you don’t want to run your own token backend.
+
+**Option B (dev): LiveKit CLI**
+
 ```bash
 lk token create \
   --api-key <PROJECT_KEY> --api-secret <PROJECT_SECRET> \
@@ -39,8 +44,16 @@ Notes:
 3. Paste your **Server URL** and **Token**.
 4. Click **Connect** and allow mic/camera permissions.
 
+Alternative (full link, skips the pre-join UI):
+```
+https://meet.livekit.io/custom?liveKitUrl=<WS_URL>&token=<JWT>
+```
+
+Notes:
+- URL-encode the token if your browser mangles it.
+- This is convenient for dev; don’t share links with long-lived tokens.
+
 ## Quick troubleshooting
 - **Can’t connect?** Verify the `wss://` URL and token are from the same project.
 - **Audio/video missing?** Check browser permissions for mic/camera.
 - **Second participant fails?** Use a new token with a different `--identity`.
-

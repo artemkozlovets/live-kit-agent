@@ -53,7 +53,9 @@ Parsed by `BackendToolsClient.call_tool(...)`:
 The agent treats `then_action` as an *instruction string* that must be converted into tool calls.
 
 Two modes:
-- **With tool LLM** (`GOOGLE_API_KEY` set): stream tool calls and merge partial JSON args; ignore unknown tool names; fall back if none parsed.
+- **With tool LLM** (`GOOGLE_API_KEY` set):
+  - First, try a deterministic parse for obvious patterns like `Call <tool>` (avoids flaky/slow LLM calls).
+  - If no obvious tools are found, stream tool calls and merge partial JSON args; ignore unknown tool names; fall back if none parsed.
   - Tool LLM is only for *parsing instructions*, not for deciding what to do.
   - The tool list excludes `get_case_status` (agent calls that deterministically).
 - **Without tool LLM:** regex fallback that extracts patterns like `Call add_service`.
@@ -71,6 +73,10 @@ Two modes:
 ### Optional providers
 - `CARTESIA_API_KEY` (TTS)
 - `GOOGLE_API_KEY` + `GOOGLE_LLM_MODEL` (tool LLM for parsing `then_action`)
+- Tool LLM connection tuning:
+  - `GOOGLE_LLM_TIMEOUT_S` (defaults to `15.0`)
+  - `GOOGLE_LLM_MAX_RETRY` (defaults to `3`)
+  - `GOOGLE_LLM_RETRY_INTERVAL_S` (defaults to `2.0`)
 
 ### Behavior / runtime
 - `LIVEKIT_AGENT_NAME` (dispatch filter)
@@ -84,13 +90,13 @@ Two modes:
   - customer check completes.
 - **Backend failure mode:** on backend errors, the agent speaks a single “trouble connecting” message and stops processing future turns.
 - **SIP phone detection:** agent reads SIP participant attributes (`sip.phoneNumber`) or identity formatted like `+1555...`.
-- **“Silent agent” gotcha:** if Deepgram STT fails at startup (for example, invalid `DEEPGRAM_EAGER_EOT_THRESHOLD`), the session can close before any response. The agent parses/clamps this value here: [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L482).
+- **“Silent agent” gotcha:** if Deepgram STT fails at startup (for example, invalid `DEEPGRAM_EAGER_EOT_THRESHOLD`), the session can close before any response. The agent parses/clamps this value here: [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L560).
 
 ## Debugging (production / LiveKit Cloud)
 - Tail agent logs: `lk agent logs --log-type deploy`
 - Agent emits extra error/close context:
-  - `AgentSession error`: [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L540)
-  - `AgentSession closing`: [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L582)
+  - `AgentSession error`: [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L660)
+  - `AgentSession closing`: [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L669)
 
 ## Tests / evals
 - Default tests: `pytest.ini` targets `livekit_agent/tests`.

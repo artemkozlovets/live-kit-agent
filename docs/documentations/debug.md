@@ -95,7 +95,12 @@ railway variables \
 
 Notes:
 - If `SESSION_REPORTS_TOKEN` is unset on the backend, the endpoint is unauthenticated.
-- Storage is **in-memory** (MVP). If Railway restarts, reports are lost.
+- Storage:
+  - **Postgres** when `DATABASE_URL` is set (Railway prod) → durable.
+  - **In-memory** otherwise (local dev/tests) → lost on restart.
+
+Migration required for Postgres:
+- Apply `migrations/002_add_session_reports.sql` to your Railway Postgres database.
 
 ### Endpoints
 Backend endpoints (FastAPI):
@@ -215,9 +220,10 @@ Start with low-noise log filters:
 railway logs --lines 200 --filter "@level:error"
 railway logs --lines 200 --filter "/vapi/tools"
 ```
-If you need a time-bounded slice (best for a single call):
+If you need timestamps (best for correlating to a specific LiveKit room):
 ```bash
-python -m squad.scripts.debug_call --railway-only --minutes 10
+railway logs --lines 200 --filter "@level:error" --json
+railway logs --lines 200 --filter "/vapi/tools" --json
 ```
 Docs:
 - `docs/instructions/pull-railway-logs.md`
@@ -228,6 +234,9 @@ These env vars increase signal or timing detail:
 - `LOG_LEVEL=DEBUG` (agent + backend verbosity)
 - `LOG_PII=1` (disables masking of call IDs/phone numbers; avoid in prod)
 - `VAPI_TOOLS_LOG_TIMING=1` (tools timing logs in API server)
+- `GOOGLE_LLM_TIMEOUT_S=...` (agent: tool parsing timeout; defaults to 15s)
+- `GOOGLE_LLM_MAX_RETRY=...` (agent: tool parsing retries; defaults to 3)
+- `GOOGLE_LLM_RETRY_INTERVAL_S=...` (agent: tool parsing retry interval; defaults to 2s)
 - `SESSION_REPORTS_URL=...` (agent: enables session report POST on session end)
 - `SESSION_REPORTS_TOKEN=...` (agent + backend: bearer auth for session report endpoint)
 
@@ -262,6 +271,15 @@ Provide:
 - LiveKit connection test result
 - LiveKit SDK logs + WebRTC dump
 - Railway log snippet (filtered) or agent log excerpt
+
+## Failure modes / gotchas (high-signal)
+- **Symptom:** agent stops mid-turn or seems “silent” after a backend `then_action`  
+  **Likely cause:** Gemini tool-LLM timed out (often `APIStatusError ... status_code=504 DEADLINE_EXCEEDED`) while converting `then_action` → tool calls  
+  **Where to look:** `lk agent logs --log-type deploy` for `tool LLM stream failed` / `then_action parsing failed`  
+  **Fix:** increase `GOOGLE_LLM_TIMEOUT_S` (and/or switch `GOOGLE_LLM_MODEL`), then redeploy agent
+- **Symptom:** Railway shows `/vapi/tools` 500 with `json.decoder.JSONDecodeError`  
+  **Likely cause:** a caller hit `/vapi/tools` with an empty or non-JSON body  
+  **Fix:** backend now returns `400 Invalid JSON payload` (see `api_server/vapi/router.py`)
 
 ## Related docs
 - `docs/documentations/livekit-agent.md`

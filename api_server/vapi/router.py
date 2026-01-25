@@ -13,7 +13,7 @@ import logging
 import os
 import time
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from api_server.server.dependencies import DatabaseClient, get_database_client
 from api_server.vapi.dispatcher import dispatch_tool_call
@@ -54,7 +54,14 @@ async def handle_vapi_tool_calls(
     }
     request_start = time.perf_counter()
 
-    request_payload = await request.json()
+    try:
+        request_payload = await request.json()
+    except Exception as exc:
+        logger.warning("Invalid JSON body for /vapi/tools", exc_info=exc)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload") from exc
+
+    if not isinstance(request_payload, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload")
     message_payload = request_payload.get("message", {})
     tool_call_list = message_payload.get("toolCallList") or message_payload.get("toolCalls") or []
 

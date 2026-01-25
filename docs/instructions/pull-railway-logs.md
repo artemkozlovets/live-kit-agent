@@ -1,6 +1,6 @@
 # Pulling Railway Logs
 
-Last updated: 2026-01-14
+Last updated: 2026-01-25
 
 ## Big picture
 Railway logs show what your service printed during builds and runtime. Use them to debug failures or confirm behavior.
@@ -28,24 +28,14 @@ railway logs --lines 200 --filter "@level:error"
 railway logs --lines 200 --filter "/vapi/tools"
 ```
 
-## Option 3: This repo's debug script (uses Railway GraphQL)
-1. Set RAILWAY_API_TOKEN and RAILWAY_ENV_ID (environment UUID).
-2. Optional: set RAILWAY_TOKEN_TYPE to match your token:
-   - account (default)
-   - team
-   - project
-3. Run: python -m squad.scripts.debug_call --railway-only --minutes 10
-4. Auth check only: python -m squad.scripts.debug_call --railway-auth-check
+## Tip: include timestamps (best for correlating to a specific call)
+Use `--json` so each log line includes a `timestamp` you can line up with LiveKit agent logs.
 
-If you're using a project token, the environment ID must match the token's scope.
-You can fetch the correct environment ID with:
+```bash
+railway logs --lines 200 --filter "@level:error" --json
+railway logs --lines 200 --filter "/vapi/tools" --json
+```
 
-curl --request POST \
-  --url https://backboard.railway.com/graphql/v2 \
-  --header 'Project-Access-Token: <PROJECT_TOKEN>' \
-  --header 'Content-Type: application/json' \
-  --data '{"query":"query { projectToken { projectId environmentId } }"}'
-
-Notes:
-- The script reads logs via squad/utils/railway_client.py.
-- If you pass --call-id, it will narrow logs to that call’s time window (Railway logs often do not include the Vapi call ID).
+## Related docs
+- `docs/instructions/verify-railway-livekit-sync.md`
+- `docs/instructions/debug-livekit-agent-silence.md`

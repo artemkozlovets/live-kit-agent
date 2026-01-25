@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 load_dotenv()
 from livekit import rtc
 from livekit.agents import Agent, AgentServer, AgentSession, ChatContext, JobContext, JobProcess, cli, function_tool
+from livekit.agents.types import APIConnectOptions
 from livekit.agents.voice.events import CloseEvent, ErrorEvent
 from livekit.plugins import cartesia, deepgram, google, silero
 
@@ -49,6 +50,17 @@ def _int_env(name: str) -> int | None:
         logger.warning("Invalid %s=%r (expected int); ignoring", name, raw)
         return None
     return int(raw)
+
+
+def _float_env(name: str) -> float | None:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning("Invalid %s=%r (expected float); ignoring", name, raw)
+        return None
 
 
 def _build_server() -> AgentServer:
@@ -378,6 +390,10 @@ class VapiAdapterAgent(Agent):
         if self._tool_llm is None:
             return _fallback_parse_then_action(instruction)
 
+        fast_calls = _fallback_parse_then_action(instruction)
+        if fast_calls:
+            return fast_calls
+
         chat_ctx = ChatContext()
         chat_ctx.add_message(
             role="system",
@@ -396,10 +412,16 @@ class VapiAdapterAgent(Agent):
         )
 
         calls_by_id: dict[str, tuple[str, str]] = {}
+        conn_options = APIConnectOptions(
+            max_retry=_int_env("GOOGLE_LLM_MAX_RETRY") or 3,
+            retry_interval=_float_env("GOOGLE_LLM_RETRY_INTERVAL_S") or 2.0,
+            timeout=_float_env("GOOGLE_LLM_TIMEOUT_S") or 15.0,
+        )
         try:
             stream = self._tool_llm.chat(
                 chat_ctx=chat_ctx,
                 tools=self._llm_tools,
+                conn_options=conn_options,
                 tool_choice="required",
                 parallel_tool_calls=True,
             )
@@ -419,7 +441,15 @@ class VapiAdapterAgent(Agent):
                         calls_by_id[call.call_id] = (merged_name, merged_args)
         except Exception as exc:
             # Reason: Gemini timeouts are common; fall back to regex parsing.
-            logger.warning("tool LLM stream failed; falling back to regex parsing", exc_info=exc)
+            logger.warning(
+                "tool LLM stream failed; falling back to regex parsing",
+                extra={
+                    "tool_llm_timeout_s": conn_options.timeout,
+                    "tool_llm_max_retry": conn_options.max_retry,
+                    "tool_llm_retry_interval_s": conn_options.retry_interval,
+                },
+                exc_info=exc,
+            )
             return _fallback_parse_then_action(instruction)
 
         parsed_calls: list[ParsedToolCall] = []
@@ -522,6 +552,9 @@ async def entrypoint(ctx: JobContext) -> None:
 
     llm_model = os.getenv("GOOGLE_LLM_MODEL", "gemini-2.5-flash")
     tool_llm = google.LLM(model=llm_model) if os.getenv("GOOGLE_API_KEY") else None
+    tool_llm_timeout_s = _float_env("GOOGLE_LLM_TIMEOUT_S") or 15.0
+    tool_llm_max_retry = _int_env("GOOGLE_LLM_MAX_RETRY") or 3
+    tool_llm_retry_interval_s = _float_env("GOOGLE_LLM_RETRY_INTERVAL_S") or 2.0
 
     stt_model = os.getenv("DEEPGRAM_STT_MODEL", "flux-general-en")
     eager_eot_threshold_raw = os.getenv("DEEPGRAM_EAGER_EOT_THRESHOLD", "0.4")
@@ -556,15 +589,18 @@ async def entrypoint(ctx: JobContext) -> None:
     text_pacing = text_pacing_raw in {"1", "true", "yes", "y", "on"}
 
     logger.info(
-        "starting agent session",
-        extra={
-            "backend_tools_url": backend_tools_url,
-            "tool_llm_enabled": bool(tool_llm),
-            "tool_llm_model": llm_model if tool_llm else None,
-            "stt_model": stt_model,
-            "eager_eot_threshold": eager_eot_threshold,
-            "tts_model": tts_model,
-            "tts_voice": tts_voice,
+            "starting agent session",
+            extra={
+                "backend_tools_url": backend_tools_url,
+                "tool_llm_enabled": bool(tool_llm),
+                "tool_llm_model": llm_model if tool_llm else None,
+                "tool_llm_timeout_s": tool_llm_timeout_s if tool_llm else None,
+                "tool_llm_max_retry": tool_llm_max_retry if tool_llm else None,
+                "tool_llm_retry_interval_s": tool_llm_retry_interval_s if tool_llm else None,
+                "stt_model": stt_model,
+                "eager_eot_threshold": eager_eot_threshold,
+                "tts_model": tts_model,
+                "tts_voice": tts_voice,
             "tts_speed": tts_speed,
             "tts_text_pacing": text_pacing,
             "has_deepgram_api_key": bool(os.getenv("DEEPGRAM_API_KEY")),

@@ -6,9 +6,9 @@
 
 ## TL;DR
 - **Goal:** figure out why the LiveKit Cloud agent joins but “never responds”.
-- **Entry points:** `lk agent logs`, `railway logs`, and the agent boot path in [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L472).
+- **Entry points:** `lk agent logs`, `railway logs`, and the agent boot path in [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L547).
 - **Where to change:**
-  - STT/Deepgram config + session logging: [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L472)
+  - STT/Deepgram config + session logging: [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L560)
   - Backend tools HTTP contract + errors: [`livekit_agent/backend_tools_client.py`](../../livekit_agent/backend_tools_client.py#L69)
   - Backend `/vapi/tools` handler: [`api_server/vapi/router.py`](../../api_server/vapi/router.py#L42)
 - **How to verify:** dispatch a room + publish a known-good Ogg Opus sample via CLI (below), then confirm:
@@ -28,8 +28,8 @@ This runbook prioritizes fast isolation via `lk` + `railway`.
 ## Preconditions (this repo)
 - `livekit.toml` points `lk` at the intended project + agent: [`livekit.toml`](../../livekit.toml#L1)
 - LiveKit Cloud agent uses:
-  - Deepgram STT with `eager_eot_threshold`: [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L482)
-  - Backend tools URL from `BACKEND_TOOLS_URL`: [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L477)
+  - Deepgram STT with `eager_eot_threshold`: [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L560)
+  - Backend tools URL from `BACKEND_TOOLS_URL`: [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L551)
 - Railway runs the tools API (`POST /vapi/tools`): [`api_server/vapi/router.py`](../../api_server/vapi/router.py#L42)
 
 ## 1) Sanity check CLI + pointers
@@ -108,7 +108,7 @@ Concrete example we hit:
 - Fix is to set `DEEPGRAM_EAGER_EOT_THRESHOLD` to a valid float (default is `0.4`).
 
 Code that parses + clamps this:
-- [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L482)
+- [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L560)
 
 Fix (LiveKit Cloud secret update):
 ```bash
@@ -129,6 +129,21 @@ Symptom in `lk agent logs`:
 Backend client code:
 - [`BackendToolsClient.call_tool`](../../livekit_agent/backend_tools_client.py#L69)
 
+### D) Tool-LLM timeouts while parsing `then_action` (Gemini 504s)
+Symptom in `lk agent logs`:
+- `tool LLM stream failed; falling back to regex parsing`
+- `then_action parsing failed; falling back to prompt`
+- (sometimes) `APIStatusError ... status_code=504 ... DEADLINE_EXCEEDED`
+
+Where this happens:
+- `then_action` parsing: [`VapiAdapterAgent._tool_calls_from_instruction`](../../livekit_agent/agent.py#L389)
+
+Fix knobs (agent secrets):
+- `GOOGLE_LLM_TIMEOUT_S` (defaults to `15.0`)
+- `GOOGLE_LLM_MAX_RETRY` (defaults to `3`)
+- `GOOGLE_LLM_RETRY_INTERVAL_S` (defaults to `2.0`)
+- `GOOGLE_LLM_MODEL` (model choice)
+
 ## 4) Railway logs: confirm tools traffic + backend errors
 ```bash
 railway logs --service "Call-agent" --environment development --lines 200 --filter "/vapi/tools"
@@ -139,12 +154,15 @@ High-signal patterns:
 
 ### A) `/vapi/tools` returns 500 with `JSONDecodeError`
 If Railway logs show:
-- `json.decoder.JSONDecodeError: Expecting value ...` at [`api_server/vapi/router.py`](../../api_server/vapi/router.py#L57)
+- `json.decoder.JSONDecodeError: Expecting value ...` at [`api_server/vapi/router.py`](../../api_server/vapi/router.py#L58)
 
 Interpretation:
 - Something is calling `POST /vapi/tools` with an **empty or non-JSON body**.
 - The LiveKit agent should always send JSON (via `urllib`).
 - Check callers / health checks / any proxy that might be hitting the wrong path.
+
+Update (2026-01-25):
+- The backend now returns `400 Invalid JSON payload` (and logs a warning) instead of crashing with a 500.
 
 ### B) `/vapi/tools` returns 500 for real tool errors
 Interpretation:
