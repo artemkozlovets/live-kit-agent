@@ -20,11 +20,13 @@ from livekit.plugins import cartesia, deepgram, google, silero
 
 from livekit_agent.backend_tools_client import BackendToolsClient, BackendToolsClientError
 from livekit_agent.flow_controller import Action, FlowController, Phase, SpeakAction, ToolAction
+from livekit_agent.session_report_publisher import SessionReportPublisher
 from livekit_agent.tools import load_tool_schemas
 
 logger = logging.getLogger("livekit-agent-vapi-adapter")
 
 _INT_ENV_RE = re.compile(r"^\d+$")
+_THEN_ACTION_FALLBACK_PROMPT = "Sorry — I'm having trouble. Could you describe what you need today?"
 _AUTH_HEADER_REDACTIONS: tuple[tuple[re.Pattern[str], str], ...] = (
     # Common auth header patterns that can leak secrets into logs.
     (re.compile(r"(Authorization['\"]:\s*['\"]Token\s+)[^'\"]+", re.IGNORECASE), r"\1***"),
@@ -194,6 +196,7 @@ class VapiAdapterAgent(Agent):
         self._started = False
         self._entered_main_flow = False
         self._fatal_error = False
+        self._then_action_fallback_spoken = False
 
         schemas = load_tool_schemas()
         self._tool_names: set[str] = {s.get("name", "") for s in schemas if isinstance(s.get("name"), str)}
@@ -340,9 +343,27 @@ class VapiAdapterAgent(Agent):
             queue = list(followups) + queue
 
     async def _execute_then_action(self, then_action: str) -> None:
-        tool_calls = await self._tool_calls_from_instruction(then_action)
+        try:
+            tool_calls = await self._tool_calls_from_instruction(then_action)
+        except Exception as exc:
+            # Reason: Tool LLM failures should not make the agent go silent.
+            logger.warning("then_action parsing failed; falling back to prompt", exc_info=exc)
+            tool_calls = []
+
+        if not tool_calls:
+            self._speak_then_action_fallback()
+            return
+
         for tool_call in tool_calls:
             await self._execute_tool_call(tool_call)
+
+    def _speak_then_action_fallback(self) -> None:
+        if self._then_action_fallback_spoken:
+            return
+
+        # Reason: Avoid silent turns when tool parsing fails (e.g., LLM timeouts).
+        self._then_action_fallback_spoken = True
+        self.session.say(_THEN_ACTION_FALLBACK_PROMPT)
 
     async def _execute_detected_corrections(self, detected_corrections: object) -> None:
         instruction = (
@@ -375,26 +396,31 @@ class VapiAdapterAgent(Agent):
         )
 
         calls_by_id: dict[str, tuple[str, str]] = {}
-        stream = self._tool_llm.chat(
-            chat_ctx=chat_ctx,
-            tools=self._llm_tools,
-            tool_choice="required",
-            parallel_tool_calls=True,
-        )
-        async with stream:
-            async for chunk in stream:
-                if not chunk.delta or not chunk.delta.tool_calls:
-                    continue
-
-                for call in chunk.delta.tool_calls:
-                    if call.call_id not in calls_by_id:
-                        calls_by_id[call.call_id] = (call.name, call.arguments or "")
+        try:
+            stream = self._tool_llm.chat(
+                chat_ctx=chat_ctx,
+                tools=self._llm_tools,
+                tool_choice="required",
+                parallel_tool_calls=True,
+            )
+            async with stream:
+                async for chunk in stream:
+                    if not chunk.delta or not chunk.delta.tool_calls:
                         continue
 
-                    existing_name, existing_args = calls_by_id[call.call_id]
-                    merged_name = call.name or existing_name
-                    merged_args = existing_args + (call.arguments or "")
-                    calls_by_id[call.call_id] = (merged_name, merged_args)
+                    for call in chunk.delta.tool_calls:
+                        if call.call_id not in calls_by_id:
+                            calls_by_id[call.call_id] = (call.name, call.arguments or "")
+                            continue
+
+                        existing_name, existing_args = calls_by_id[call.call_id]
+                        merged_name = call.name or existing_name
+                        merged_args = existing_args + (call.arguments or "")
+                        calls_by_id[call.call_id] = (merged_name, merged_args)
+        except Exception as exc:
+            # Reason: Gemini timeouts are common; fall back to regex parsing.
+            logger.warning("tool LLM stream failed; falling back to regex parsing", exc_info=exc)
+            return _fallback_parse_then_action(instruction)
 
         parsed_calls: list[ParsedToolCall] = []
         for call_id, (name, raw_args) in calls_by_id.items():
@@ -461,6 +487,24 @@ class VapiAdapterAgent(Agent):
 
 server = _build_server()
 
+DEFAULT_BACKEND_TOOLS_URL = "https://call-agent-development.up.railway.app/vapi/tools"
+
+
+async def _on_session_end(ctx: JobContext) -> None:
+    """Publish a session report (optional).
+
+    Reason: we want a programmatic artifact (session report JSON) without having
+    to open the LiveKit Cloud UI.
+    """
+
+    reports_url = os.getenv("SESSION_REPORTS_URL", "").strip()
+    if not reports_url:
+        return
+
+    token = os.getenv("SESSION_REPORTS_TOKEN", "").strip() or None
+    publisher = SessionReportPublisher(reports_url=reports_url, token=token)
+    await publisher.publish(ctx)
+
 
 def _prewarm(proc: JobProcess) -> None:
     proc.userdata["vad"] = silero.VAD.load()
@@ -469,12 +513,12 @@ def _prewarm(proc: JobProcess) -> None:
 server.setup_fnc = _prewarm
 
 
-@server.rtc_session(agent_name=os.getenv("LIVEKIT_AGENT_NAME", "").strip())
+@server.rtc_session(agent_name=os.getenv("LIVEKIT_AGENT_NAME", "").strip(), on_session_end=_on_session_end)
 async def entrypoint(ctx: JobContext) -> None:
     load_dotenv()
     ctx.log_context_fields = {"room": ctx.room.name}
 
-    backend_tools_url = os.getenv("BACKEND_TOOLS_URL", "https://call-agent-development.up.railway.app/vapi/tools")
+    backend_tools_url = os.getenv("BACKEND_TOOLS_URL", DEFAULT_BACKEND_TOOLS_URL)
 
     llm_model = os.getenv("GOOGLE_LLM_MODEL", "gemini-2.5-flash")
     tool_llm = google.LLM(model=llm_model) if os.getenv("GOOGLE_API_KEY") else None

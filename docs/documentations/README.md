@@ -38,3 +38,4 @@
 - [`docs/documentations/vapi-export.md`](./vapi-export.md)
 - [`docs/documentations/testing-and-evals.md`](./testing-and-evals.md)
 - [`docs/documentations/livekit-webrtc-debugging.md`](./livekit-webrtc-debugging.md)
+- [`docs/documentations/debug.md`](./debug.md)
