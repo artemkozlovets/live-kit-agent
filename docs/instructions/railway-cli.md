@@ -73,3 +73,6 @@ railway logs --lines 200 --filter "@level:error"
 Notes:
 - `railway logs` streams by default. Use `--lines` (or `--tail`) for historical snapshots.
 - `--service` and `--environment` scope logs if your project has multiple services/environments.
+
+## Verify integration with LiveKit
+See: `docs/instructions/verify-railway-livekit-sync.md`

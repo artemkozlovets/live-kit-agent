@@ -14,3 +14,7 @@ This folder is documentation optimized for *Codex-style codebase work*: fast ret
 
 ## Operational runbooks
 `docs/instructions/` contains operational “how to” guides (example: pulling Railway logs).
+
+Recommended starting points:
+- [`docs/instructions/verify-railway-livekit-sync.md`](instructions/verify-railway-livekit-sync.md)
+- [`docs/instructions/pull-railway-logs.md`](instructions/pull-railway-logs.md)
