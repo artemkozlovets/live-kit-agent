@@ -1,6 +1,6 @@
 # Verify Railway ↔ LiveKit Sync
 
-Last updated: 2026-01-24
+Last updated: 2026-01-25
 
 ## Big picture
 This repo runs as **two deployed services**:
@@ -70,6 +70,9 @@ LiveKit agent logs (streams; press Ctrl+C to stop):
 ```bash
 lk agent logs --log-type deploy
 ```
+
+If the agent “joins but is silent”, use:
+- [`docs/instructions/debug-livekit-agent-silence.md`](debug-livekit-agent-silence.md)
 
 ## 6) Optional: compare deployed “versions”
 Local git state:

@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 load_dotenv()
 from livekit import rtc
 from livekit.agents import Agent, AgentServer, AgentSession, ChatContext, JobContext, JobProcess, cli, function_tool
+from livekit.agents.voice.events import CloseEvent, ErrorEvent
 from livekit.plugins import cartesia, deepgram, google, silero
 
 from livekit_agent.backend_tools_client import BackendToolsClient, BackendToolsClientError
@@ -24,6 +25,18 @@ from livekit_agent.tools import load_tool_schemas
 logger = logging.getLogger("livekit-agent-vapi-adapter")
 
 _INT_ENV_RE = re.compile(r"^\d+$")
+_AUTH_HEADER_REDACTIONS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # Common auth header patterns that can leak secrets into logs.
+    (re.compile(r"(Authorization['\"]:\s*['\"]Token\s+)[^'\"]+", re.IGNORECASE), r"\1***"),
+    (re.compile(r"(Authorization['\"]:\s*['\"]Bearer\s+)[^'\"]+", re.IGNORECASE), r"\1***"),
+)
+
+
+def _redact_secrets(text: str) -> str:
+    redacted = text
+    for pattern, replacement in _AUTH_HEADER_REDACTIONS:
+        redacted = pattern.sub(replacement, redacted)
+    return redacted
 
 
 def _int_env(name: str) -> int | None:
@@ -472,6 +485,19 @@ async def entrypoint(ctx: JobContext) -> None:
         eager_eot_threshold = float(eager_eot_threshold_raw)
     except ValueError:
         eager_eot_threshold = 0.4
+        logger.warning(
+            "Invalid DEEPGRAM_EAGER_EOT_THRESHOLD=%r (expected float); using default=%s",
+            eager_eot_threshold_raw,
+            eager_eot_threshold,
+        )
+    else:
+        # Reason: Deepgram rejects values outside this range with a 400, which makes the agent go silent.
+        if eager_eot_threshold < 0.3 or eager_eot_threshold > 0.9:
+            logger.warning(
+                "Invalid DEEPGRAM_EAGER_EOT_THRESHOLD=%s (expected 0.3-0.9); clamping",
+                eager_eot_threshold,
+            )
+            eager_eot_threshold = min(max(eager_eot_threshold, 0.3), 0.9)
     tts_model = os.getenv("CARTESIA_TTS_MODEL", "sonic-3")
     tts_voice = os.getenv("CARTESIA_VOICE_ID", "794f9389-aac1-45b6-b726-9d9369183238")
     tts_speed_raw = os.getenv("CARTESIA_SPEED", "").strip()
@@ -497,6 +523,9 @@ async def entrypoint(ctx: JobContext) -> None:
             "tts_voice": tts_voice,
             "tts_speed": tts_speed,
             "tts_text_pacing": text_pacing,
+            "has_deepgram_api_key": bool(os.getenv("DEEPGRAM_API_KEY")),
+            "has_cartesia_api_key": bool(os.getenv("CARTESIA_API_KEY")),
+            "has_google_api_key": bool(os.getenv("GOOGLE_API_KEY")),
         },
     )
 
@@ -508,13 +537,76 @@ async def entrypoint(ctx: JobContext) -> None:
         vad=ctx.proc.userdata["vad"],
     )
 
+    @session.on("error")
+    def _on_session_error(ev: ErrorEvent) -> None:
+        # Reason: LiveKit Cloud "AgentSession is closing..." logs can omit the underlying exception.
+        # Log the full error details (including traceback when available) so we can debug via `lk agent logs`.
+        error_obj = ev.error
+
+        # Most LiveKit error models include the actual exception in `.error` (excluded from JSON).
+        underlying_exc = getattr(error_obj, "error", None)
+        exc_info = None
+        if isinstance(underlying_exc, BaseException) and underlying_exc.__traceback__ is not None:
+            # Reason: Some exceptions include request headers in their message (can leak API keys).
+            redacted_exc = RuntimeError(_redact_secrets(str(underlying_exc)))
+            exc_info = (type(redacted_exc), redacted_exc, underlying_exc.__traceback__)
+        elif isinstance(error_obj, BaseException) and error_obj.__traceback__ is not None:
+            redacted_exc = RuntimeError(_redact_secrets(str(error_obj)))
+            exc_info = (type(redacted_exc), redacted_exc, error_obj.__traceback__)
+
+        recoverable = getattr(error_obj, "recoverable", None)
+        label = getattr(error_obj, "label", None)
+        error_type = getattr(error_obj, "type", None)
+
+        remote_error = None
+        status = None
+        headers = getattr(underlying_exc, "headers", None)
+        if headers:
+            remote_error = headers.get("dg-error") or headers.get("x-error")
+        status = getattr(underlying_exc, "status", None)
+
+        log_extra = {
+            "room": ctx.room.name,
+            "job_id": getattr(ctx, "job", None).id if getattr(ctx, "job", None) else None,
+            "error_model_type": type(error_obj).__name__,
+            "error_type": error_type,
+            "error_label": label,
+            "recoverable": recoverable,
+            "source_type": type(ev.source).__name__,
+            "status": status,
+            "remote_error": remote_error,
+        }
+
+        logger.error("AgentSession error", extra=log_extra, exc_info=exc_info)
+
+    @session.on("close")
+    def _on_session_close(ev: CloseEvent) -> None:
+        close_error = getattr(ev, "error", None)
+        close_error_dump = None
+        if close_error is not None and hasattr(close_error, "model_dump"):
+            close_error_dump = close_error.model_dump(exclude_none=True)
+        logger.info(
+            "AgentSession closing",
+            extra={
+                "room": ctx.room.name,
+                "job_id": getattr(ctx, "job", None).id if getattr(ctx, "job", None) else None,
+                "reason": getattr(ev, "reason", None),
+                "error": close_error_dump,
+            },
+        )
+
     agent = VapiAdapterAgent(
         backend_client=BackendToolsClient(tools_url=backend_tools_url),
         call_id_fallback=ctx.room.name,
         tool_llm=tool_llm,
     )
 
-    await session.start(agent=agent, room=ctx.room)
+    try:
+        await session.start(agent=agent, room=ctx.room)
+    except Exception:
+        # Reason: Ensure *any* uncaught exception is visible in LiveKit Cloud logs.
+        logger.exception("Unhandled exception in agent entrypoint", extra={"room": ctx.room.name})
+        raise
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 # Docs (Codex Context)
 
-> **Last Updated**: 2026-01-24  
+> **Last Updated**: 2026-01-25  
 > **Audience**: Codex (repo context)  
 > **Status**: Draft
 
@@ -18,3 +18,4 @@ This folder is documentation optimized for *Codex-style codebase work*: fast ret
 Recommended starting points:
 - [`docs/instructions/verify-railway-livekit-sync.md`](instructions/verify-railway-livekit-sync.md)
 - [`docs/instructions/pull-railway-logs.md`](instructions/pull-railway-logs.md)
+- [`docs/instructions/debug-livekit-agent-silence.md`](instructions/debug-livekit-agent-silence.md)

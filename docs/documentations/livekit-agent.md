@@ -1,6 +1,6 @@
 # LiveKit Agent (Codex Context)
 
-> **Last Updated**: 2026-01-24  
+> **Last Updated**: 2026-01-25  
 > **Audience**: Codex (repo context)  
 > **Status**: Draft
 
@@ -63,6 +63,7 @@ Two modes:
 ### Required for real voice runs
 - `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`
 - `DEEPGRAM_API_KEY` (STT)
+- `DEEPGRAM_EAGER_EOT_THRESHOLD` (optional; must be a float in **0.3–0.9** or Deepgram can reject STT startup)
 - `BACKEND_TOOLS_URL` (defaults to a dev URL in `livekit_agent/agent.py`)
   - Railway base: `https://call-agent-development.up.railway.app/`
   - Set: `https://call-agent-development.up.railway.app/vapi/tools`
@@ -83,6 +84,13 @@ Two modes:
   - customer check completes.
 - **Backend failure mode:** on backend errors, the agent speaks a single “trouble connecting” message and stops processing future turns.
 - **SIP phone detection:** agent reads SIP participant attributes (`sip.phoneNumber`) or identity formatted like `+1555...`.
+- **“Silent agent” gotcha:** if Deepgram STT fails at startup (for example, invalid `DEEPGRAM_EAGER_EOT_THRESHOLD`), the session can close before any response. The agent parses/clamps this value here: [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L482).
+
+## Debugging (production / LiveKit Cloud)
+- Tail agent logs: `lk agent logs --log-type deploy`
+- Agent emits extra error/close context:
+  - `AgentSession error`: [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L540)
+  - `AgentSession closing`: [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L582)
 
 ## Tests / evals
 - Default tests: `pytest.ini` targets `livekit_agent/tests`.

@@ -1,6 +1,6 @@
 # Repo Context Index (Codex)
 
-> **Last Updated**: 2026-01-24  
+> **Last Updated**: 2026-01-25  
 > **Audience**: Codex (repo context)  
 > **Status**: Draft
 
@@ -37,3 +37,4 @@
 - [`docs/documentations/database-and-migrations.md`](./database-and-migrations.md)
 - [`docs/documentations/vapi-export.md`](./vapi-export.md)
 - [`docs/documentations/testing-and-evals.md`](./testing-and-evals.md)
+- [`docs/documentations/livekit-webrtc-debugging.md`](./livekit-webrtc-debugging.md)

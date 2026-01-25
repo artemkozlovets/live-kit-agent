@@ -1,6 +1,6 @@
 ---
 name: document
-description: Create focused documentation for a specific part of this repo and save it under docs/documentations/.
+description: Create Codex-first documentation (contracts/runbooks) for a specific part of this repo and save it under docs/.
 metadata:
   short-description: Generate repo documentation
 ---
@@ -14,10 +14,11 @@ Before doing anything else, open and read:
 Do not proceed until it is read.
 
 ## Big Picture (what problem are we solving?)
-When someone asks “how does X work in this repo?”, we want a **clear, accurate markdown doc** that:
-- Explains the behavior in plain English (not just code screenshots)
-- Links to the real implementation files so a reader can click and verify
-- Lives in this repo so it’s easy to share and version-control
+When someone asks “how does X work?” or “how do I do X?” in this repo, we want a **Codex-optimized markdown doc** that:
+- Is **high-signal and unambiguous** (contracts, invariants, entrypoints, verification)
+- Answers “**where do I look/change things?**” fast (paths + symbols + links)
+- Includes a **proof path** (“how to verify”) so Codex can iterate safely
+- Lives in the repo so it stays versioned and discoverable
 
 ## Full Playbook (untrimmed)
 The long, detailed version of this workflow lives in:
@@ -29,23 +30,33 @@ Before writing documentation:
 3. If it mentions `/document`, treat that as invoking this skill (`$document`).
 
 ## Approach (plain English)
-1. **Clarify the question** (what feature/topic, and what’s the exact thing to explain?)
-2. **Explore the code** (search, read, and trace the flow end-to-end)
-3. **Write a short doc** in `docs/documentations/` using the repo’s existing style
-4. **Prove it’s grounded** by adding file links (with line anchors when practical)
+1. **Clarify the doc type + objective**
+   - “How it works / architecture / contract” → `docs/documentations/`
+   - “How to do X (steps) / runbook” → `docs/instructions/`
+2. **Explore the code**
+   - Search + read + trace the happy path end-to-end
+   - Identify invariants and “unsafe to assume” areas
+3. **Write a Codex-first doc** using the repo’s existing style
+4. **Ground every claim** with file links (use line anchors when practical)
 
 ## Inputs to Ask For (if missing)
 - **Topic name** (used for the filename)
   - Prefer `kebab-case` like existing docs: `api-server.md`, `n8n-workflows.md`
 - **Question / goal** (1–2 sentences)
 - **Scope** (optional): “only `api_server/`”, “only `server/`”, etc.
+- **Doc type** (optional): `documentation` (how it works) vs `instruction` (runbook)
 
 ## Output Location
-Write to: `docs/documentations/<topic-kebab-case>.md`
+Write to one of:
+- `docs/documentations/<topic-kebab-case>.md` (how it works / contracts)
+- `docs/instructions/<topic-kebab-case>.md` (how to do X / operational steps)
 
 Use these as style references:
+- `docs/README.md`
+- `docs/documentations/README.md`
+- `docs/documentations/repo-overview.md`
+- `docs/documentations/livekit-agent.md`
 - `docs/documentations/api-server.md`
-- `docs/documentations/squad-architecture.md`
 
 ## Research Checklist (do this before writing)
 - Find entry points (routes, CLI entry, main modules)
@@ -54,32 +65,48 @@ Use these as style references:
 - Identify integrations (external APIs, webhooks)
 - Trace the **happy path** end-to-end (the normal, expected flow)
 
-## Doc Template (keep it simple)
-Create a doc shaped like this:
+## Doc Template (Codex-first, high-signal)
+Create a doc shaped like this (adjust sections as needed; keep it scannable):
 
 ```md
-# <Title>
+# <Title> (Codex Context)
 
 > **Last Updated**: YYYY-MM-DD
-> **Status**: Production | Beta | Draft
+> **Audience**: Codex (repo context)
+> **Status**: Draft | Production | Deprecated
 
-## Overview
-2–4 sentences: what it does and why it exists.
+## TL;DR
+- **Goal:** what this covers
+- **Entry points:** the file(s)/symbol(s) to start from
+- **Where to change:** the file(s) most likely to modify
+- **How to verify:** exact command(s) to run
 
-## How It Works
-Step-by-step flow (numbered list). Mention the key decision points.
+## Key Files
+- `path/to/file.py` — why it matters
+- `path/to/file.ts` — why it matters
 
-## Key Components
-- **<Component>** — purpose + link to file
+## Flow (Happy Path)
+1. Step 1 (include key decision points)
+2. Step 2
+3. Step 3
 
-## Data Flow (if relevant)
-Input → processing → storage → output (simple diagram or bullets).
+## Contracts / Invariants
+- Assumption that must stay true
+- “Do not break” constraints (API shapes, IDs, ordering, etc.)
 
 ## Configuration (only if it exists)
 - `ENV_VAR` — what it controls
 
-## Notes / Gotchas
-Edge cases, performance, security, limitations.
+## Verification
+- Happy path: `...` (expected success signal)
+- Edge case: `...`
+- Failure case: `...` (expected error)
+
+## Failure Modes / Gotchas
+- Symptom → likely cause → fix
+
+## Related Docs
+- `docs/...` (links)
 ```
 
 ## File Links (how to format them)
@@ -88,5 +115,6 @@ Use clickable markdown links with line anchors when you reference a specific spo
 
 ## Quality Bar
 - Don’t guess: only claim what you can back up by reading files.
-- Keep code blocks small (≤ 10 lines) and only when it helps understanding.
+- Prefer **paths + symbols + commands** over narrative.
+- Keep code blocks small (≤ 10 lines) and only when it helps verification.
 - If you’re unsure, ask a clarifying question instead of inventing details.

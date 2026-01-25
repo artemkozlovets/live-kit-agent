@@ -51,6 +51,7 @@ When writing tests, include:
 ### 🧠 AI Behavior Rules
 
 - **Never assume missing context. Ask questions if uncertain.**
+- Prefer tool `workdir` over `cd ... &&` prefixes so exec allowlist rules still match `lk ...` / `railway ...` (avoids unnecessary approval prompts).
 
 ### 🧾 Git & Commits
 

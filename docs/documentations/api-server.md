@@ -1,6 +1,6 @@
 # API Server (Codex Context)
 
-> **Last Updated**: 2026-01-24  
+> **Last Updated**: 2026-01-25  
 > **Audience**: Codex (repo context)  
 > **Status**: Draft
 
@@ -94,6 +94,7 @@ Key facts:
 ## Gotchas (high-signal)
 - Tool calls can arrive under `toolCallList` or `toolCalls`, and arguments can be dict or JSON string → always use `api_server/vapi/tool_call_parsing.py`.
 - Some configs include `call_id` as a tool arg; backend uses `message.call.id` as canonical call id.
+- If Railway logs show `JSONDecodeError: Expecting value` at [`api_server/vapi/router.py`](../../api_server/vapi/router.py#L57), something is POSTing `/vapi/tools` with an empty/non-JSON body (system-boundary failure).
 
 ## Related docs
 - `docs/documentations/livekit-agent.md`
