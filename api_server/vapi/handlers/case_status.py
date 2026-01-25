@@ -607,7 +607,10 @@ async def handle_get_case_status(
         case_state=case_status,
         last_message=last_user_message,
     )
-    then_action = then_action_override or case_status.get("next_action")
+    then_action = case_status.get("next_action")
+    if then_action_override is not None:
+        # Reason: Allow empty-string overrides to suppress tool parsing when we only need a prompt.
+        then_action = then_action_override
 
     detected_corrections = None
     if category == MessageCategory.CORRECTION and use_gemini_corrections:

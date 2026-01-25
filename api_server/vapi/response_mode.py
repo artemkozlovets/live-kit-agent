@@ -11,6 +11,40 @@ from typing import Any
 from api_server.vapi.message_classifier import MessageCategory
 
 
+def _normalize_missing_fields(case_state: dict[str, Any]) -> set[str]:
+    missing_fields = case_state.get("missing_fields")
+    if not isinstance(missing_fields, list):
+        return set()
+    normalized: set[str] = set()
+    for item in missing_fields:
+        if isinstance(item, str) and item.strip():
+            normalized.add(item.strip())
+    return normalized
+
+
+def _normal_immediate_message(case_state: dict[str, Any]) -> str | None:
+    missing_fields = _normalize_missing_fields(case_state)
+    if not missing_fields:
+        return None
+
+    current_phase = case_state.get("current_phase")
+    if current_phase == "customer_intake":
+        if "first_name" in missing_fields or "last_name" in missing_fields:
+            return "Thanks. What's your name?"
+        if "phone" in missing_fields:
+            return "Thanks. What's the best phone number to reach you?"
+
+    if current_phase == "service_collection":
+        if missing_fields.intersection({"vin", "unit_number", "unit_nickname", "vehicle_identifier"}):
+            return "What vehicle do you need service for?"
+        if "location" in missing_fields:
+            return "Where is the vehicle located?"
+        if "complaint" in missing_fields:
+            return "What's the issue with the vehicle?"
+
+    return None
+
+
 def compute_response_mode(
     *,
     category: MessageCategory,
@@ -57,6 +91,12 @@ def compute_response_mode(
             "No problem.",
             "Skip that step and continue.",
         )
+
+    if category == MessageCategory.NORMAL:
+        immediate_message = _normal_immediate_message(case_state)
+        if immediate_message is not None:
+            # Reason: Avoid tool parsing when the next step is just collecting info from the caller.
+            return ("speak_first", immediate_message, "")
 
     return (
         "tool_first",

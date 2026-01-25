@@ -16,11 +16,20 @@ from __future__ import annotations
 
 import json
 import os
+from decimal import Decimal
 from typing import Any
 
 
 def _truthy_env(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _to_float(value: object) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, Decimal):
+        return float(value)
+    return None
 
 
 class SessionReportStore:
@@ -88,7 +97,7 @@ class SessionReportStore:
             report_dict = {}
 
         received_at = entry.get("received_at_unix_s")
-        received_at_unix_s = float(received_at) if isinstance(received_at, (int, float)) else None
+        received_at_unix_s = _to_float(received_at)
         if received_at_unix_s is None:
             received_at_unix_s = 0.0
 
@@ -139,7 +148,7 @@ class SessionReportStore:
             if isinstance(parsed, dict):
                 report = parsed
 
-        received_at_unix_s = float(received_at) if isinstance(received_at, (int, float)) else None
+        received_at_unix_s = _to_float(received_at)
         return {"report": report, "received_at_unix_s": received_at_unix_s}
 
     def _list_from_postgres(self, database_url: str, *, limit: int | None) -> list[dict[str, Any]]:
@@ -166,6 +175,6 @@ class SessionReportStore:
         items: list[dict[str, Any]] = []
         for room_name_value, received_at in rows:
             room_name_str = str(room_name_value)
-            received_at_unix_s = float(received_at) if isinstance(received_at, (int, float)) else None
+            received_at_unix_s = _to_float(received_at)
             items.append({"room_name": room_name_str, "received_at_unix_s": received_at_unix_s})
         return items
