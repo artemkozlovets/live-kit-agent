@@ -106,6 +106,7 @@ Notes:
 - `call.customer.number` is the **confirmed callback number** when known (may be omitted until confirmed).
 - `assistant.variable_values` is optional but supports “known customer” prefill flows.
 - `tool_calls[].arguments` is a JSON object (no JSON-string arguments in v2).
+- This **public** v2 contract must remain provider-agnostic. Do not introduce Vapi-specific shapes like `assistantOverrides` (we may map internally for compatibility while reusing existing handlers).
 
 ### Response (success)
 ```json
@@ -140,14 +141,18 @@ Notes:
 
 ### HTTP failures
 - `400`: invalid request shape (missing `call.id`, invalid `tool_calls`, etc.)
-- `401/403`: missing/invalid auth
+- `401`: missing/invalid auth token
 - `500`: unexpected server error (crash w/ stack trace; boundary error handling only)
 
 ### Auth (required)
 This endpoint must not be publicly callable.
-Options (pick one):
-- `X-TOOLS-TOKEN: <shared-secret>` header between agent ↔ backend, or
-- internal network-only access (private service), plus allowlist by source.
+Decision (for this repo):
+- Require `X-TOOLS-TOKEN: <shared-secret>` header between agent ↔ backend.
+- Backend reads the expected value from env: `TOOLS_TOKEN`.
+- Respond with `401` when the header is missing or invalid.
+
+Alternative (nice-to-have later):
+- Internal network-only access (private service), plus allowlist by source.
 
 ## Guardrails (must keep)
 - After initial info dump, populate session state via tools.
@@ -159,12 +164,14 @@ Options (pick one):
 - Realtime sessions are stateful and time-bounded (confirm exact limits in OpenAI docs).
 - Voice selection may be locked after first audio output (choose voice early).
 - Known issue: loading large conversation history can cause text outputs even when audio is enabled; if we hit this, use `modalities=["text"]` + a separate TTS plugin as a fallback.
+- Realtime models typically do **not** provide interim transcripts. If we later need realtime transcription or the LiveKit “turn detector” model, we must add a separate STT plugin (extra cost). For this cutover, prefer the Realtime model’s built-in VAD.
 
 ## Config / dependencies (expected changes)
 Agent:
 - Add: `OPENAI_API_KEY` (and a model/voice selection env var if we want to make those configurable).
 - Remove from the default production path: `DEEPGRAM_API_KEY`, `CARTESIA_API_KEY`, and the optional `GOOGLE_API_KEY`/`GEMINI_API_KEY` used for “tool LLM” parsing.
 - Dependencies: add the LiveKit OpenAI Realtime plugin extra (Python: `livekit-agents[openai]`).
+  - Note: `modalities=["text"]` + separate TTS is an optional fallback for history-heavy sessions, but must not be required for MVP or tests.
 
 Backend:
 - Add: an auth mechanism for `POST /tools` (for example `X-TOOLS-TOKEN`).
@@ -176,6 +183,7 @@ Backend:
 - [ ] OpenAI Realtime is the default conversation engine.
 - [ ] LiveKit remains the transport for PSTN + web.
 - [ ] Backend exposes `POST /tools` with the v2 contract above.
+- [ ] `POST /tools` requires auth (`X-TOOLS-TOKEN` header, validated against `TOOLS_TOKEN`) and returns `401` when missing/invalid.
 - [ ] Calls complete end-to-end without `DEEPGRAM_API_KEY`, `CARTESIA_API_KEY`, or `GOOGLE_API_KEY`/`GEMINI_API_KEY` set.
 - [ ] Preserve slot-filling guardrails: **info dump → fill session → ask only missing → confirm at end → book**.
 - [ ] Backend enforces “no booking without explicit confirmation”.
@@ -207,6 +215,7 @@ Backend:
 - Backend: unit tests for `POST /tools` (happy path, edge case, failure case).
 - Agent: slot-filling flow tests updated to hit `/tools` and run in text-mode deterministically.
 - Manual smoke: local audio console / web call reaches booking flow and enforces final confirmation.
+- Config: agent + backend run without Deepgram/Cartesia/Gemini keys present (only `OPENAI_API_KEY` + `TOOLS_TOKEN`).
 
 ## Rollout / rollback (must be explicit)
 Rollout:
