@@ -2,3 +2,7 @@
 __pycache__/
 .pytest_cache/
 .env
+
+# Local debug artifacts (generated)
+console-recordings/session-*/
+local-observability/run-*/

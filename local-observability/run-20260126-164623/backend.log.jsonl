@@ -1,1 +1,0 @@
-{"ts_unix_s": 1769474783.7768939, "level": "INFO", "logger": "uvicorn.access", "message": "127.0.0.1:65523 - \"GET /health HTTP/1.1\" 200", "extra": {"taskName": "Task-3", "message": "127.0.0.1:65523 - \"GET /health HTTP/1.1\" 200"}}
