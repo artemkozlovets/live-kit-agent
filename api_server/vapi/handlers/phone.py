@@ -99,6 +99,30 @@ def _get_missing_new_customer_fields(known_data: dict[str, Any]) -> list[str]:
     return missing_fields
 
 
+def _merge_known_customer_data(
+    *,
+    known_data_from_tool: dict[str, Any],
+    session: dict[str, Any],
+) -> dict[str, Any]:
+    # Reason: Slot-filling can collect customer details via `get_case_status` extraction
+    # (persisted in session) before we ever call `check_customer`. When the assistant
+    # omits/forgets known_data, we still want to return only truly-missing fields.
+    merged: dict[str, Any] = {}
+    for field_name in NEW_CUSTOMER_REQUIRED_FIELDS:
+        tool_value = known_data_from_tool.get(field_name)
+        if isinstance(tool_value, str) and tool_value.strip():
+            merged[field_name] = tool_value
+            continue
+
+        session_value = session.get(field_name)
+        if isinstance(session_value, str) and session_value.strip():
+            merged[field_name] = session_value
+            continue
+
+        merged[field_name] = None
+    return merged
+
+
 def handle_validate_phone(
     tool_call: dict[str, Any],
     message_payload: dict[str, Any],
@@ -179,7 +203,14 @@ def handle_check_customer(
     phone_number = tool_arguments.get("phone_number")
     known_data = tool_arguments.get("known_data")
     known_data_dict = known_data if isinstance(known_data, dict) else {}
-    missing_fields = _get_missing_new_customer_fields(known_data_dict)
+
+    call_id = get_call_id(message_payload)
+    session = session_store.get(call_id) if call_id else {}
+    merged_known_data = _merge_known_customer_data(
+        known_data_from_tool=known_data_dict,
+        session=session,
+    )
+    missing_fields = _get_missing_new_customer_fields(merged_known_data)
 
     if not isinstance(phone_number, str) or not phone_number:
         return {
@@ -220,11 +251,11 @@ def handle_check_customer(
             ),
         }
 
-    call_id = get_call_id(message_payload)
-    session = session_store.get(call_id)
-    session["customer_id"] = customer_record.customer_id
-    session["customer_registered"] = True
-    session_store.set(call_id, session)
+    if call_id:
+        session = session_store.get(call_id)
+        session["customer_id"] = customer_record.customer_id
+        session["customer_registered"] = True
+        session_store.set(call_id, session)
 
     # Reason: Guide assistant to greet returning customer and proceed to service
     return {

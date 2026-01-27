@@ -178,6 +178,33 @@ class ParsedToolCall:
     arguments: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class _CustomerQuestion:
+    expected_field: str
+    text: str
+
+
+def _question_for_customer_field(field_name: str) -> _CustomerQuestion:
+    normalized = (field_name or "").strip()
+    if normalized == "first_name":
+        return _CustomerQuestion(expected_field="first_name", text="What's your first name?")
+    if normalized == "last_name":
+        return _CustomerQuestion(expected_field="last_name", text="What's your last name?")
+    if normalized == "company_name":
+        return _CustomerQuestion(expected_field="company_name", text="What company are you with?")
+    if normalized == "email_address":
+        return _CustomerQuestion(expected_field="email_address", text="What's the best email address for confirmations?")
+    if normalized == "streetAddress":
+        return _CustomerQuestion(expected_field="streetAddress", text="What's your street address?")
+    if normalized == "city":
+        return _CustomerQuestion(expected_field="city", text="What city?")
+    if normalized == "state":
+        return _CustomerQuestion(expected_field="state", text="What state?")
+    if normalized == "postalCode":
+        return _CustomerQuestion(expected_field="postalCode", text="What's the ZIP code?")
+    return _CustomerQuestion(expected_field="first_name", text="What's your name?")
+
+
 def _extract_phone_number(text: str) -> str | None:
     match = _PHONE_RE.search(text)
     if not match:
@@ -280,10 +307,22 @@ class VapiAdapterAgent(Agent):
             "yes",
             "y",
         }
+        # Slot-filling mode is an opt-in flow controller:
+        # - treat backend session as the source of truth (slot store)
+        # - ask only for missing fields
+        # - do confirmations only at the end (right before booking)
+        self._slot_filling = os.getenv("AGENT_SLOT_FILLING", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "y",
+        }
         self._greeting = os.getenv("AGENT_GREETING", "").strip() or None
         self._greeted = False
         self._started = False
         self._entered_main_flow = False
+        self._expected_field: str | None = None
+        self._awaiting_final_confirmation = False
         self._fatal_error = False
         self._then_action_fallback_spoken = False
 
@@ -321,6 +360,10 @@ class VapiAdapterAgent(Agent):
 
     async def on_enter(self) -> None:
         self._update_sip_phone_number_from_room()
+        if self._slot_filling:
+            self._maybe_greet()
+            self._started = True
+            return
         if self._fast_intake:
             self._maybe_greet()
             # Reason: In fast intake, don't trigger the callback-number preflight prompts.
@@ -338,6 +381,13 @@ class VapiAdapterAgent(Agent):
         user_text = getattr(new_message, "text_content", None) or ""
         user_text = user_text.strip()
         if not user_text:
+            return
+
+        if self._slot_filling:
+            self._maybe_greet()
+            self._started = True
+            self._entered_main_flow = True
+            await self._handle_slot_filling_turn(user_text)
             return
 
         if self._fast_intake:
@@ -361,6 +411,321 @@ class VapiAdapterAgent(Agent):
             return
 
         await self._handle_business_turn(user_text)
+
+    async def _handle_slot_filling_turn(self, user_text: str) -> None:
+        """Slot-filling flow controller (opt-in).
+
+        Big picture:
+        - Always call `get_case_status` first to persist any extracted fields into the backend session.
+        - Use guardrails in code to decide the next question/tool call.
+        - Do a single confirmation at the end, then book immediately.
+        """
+
+        if self._awaiting_final_confirmation:
+            if _AFFIRMATIVE_RE.search(user_text):
+                await self._finalize_booking()
+                return
+            if _NEGATIVE_RE.search(user_text):
+                self._awaiting_final_confirmation = False
+                self.session.say("No problem — what should I change?")
+                return
+
+            # Reason: If the caller provides new info instead of yes/no, treat it as a correction.
+            self._awaiting_final_confirmation = False
+
+        expected_field = self._expected_field
+        if expected_field is not None:
+            self._expected_field = None
+
+        try:
+            case_status = await self._call_backend_tool(
+                tool_call_id=f"tool-{uuid.uuid4().hex}",
+                tool_name="get_case_status",
+                tool_arguments={
+                    "last_user_message": user_text,
+                    **({"expected_field": expected_field} if expected_field else {}),
+                },
+            )
+        except BackendToolsClientError:
+            await self._speak_backend_unreachable_once()
+            return
+
+        customer_known_data = case_status.get("customer_known_data")
+        customer_known_data_dict = customer_known_data if isinstance(customer_known_data, dict) else {}
+
+        customer = case_status.get("customer") if isinstance(case_status.get("customer"), dict) else {}
+        service = case_status.get("service") if isinstance(case_status.get("service"), dict) else {}
+
+        phone_number = customer_known_data_dict.get("phone_number") or customer.get("phone") or self._sip_phone_number
+        phone_number = phone_number.strip() if isinstance(phone_number, str) and phone_number.strip() else None
+        if phone_number is None:
+            self._expected_field = "phone_number"
+            self.session.say("What's the best callback number?")
+            return
+
+        normalized_phone = await self._maybe_validate_phone(phone_number)
+        if self._fatal_error:
+            return
+        if normalized_phone is None:
+            self._expected_field = "phone_number"
+            self.session.say("That number didn’t look valid. What’s the best callback number for you?")
+            return
+
+        customer_id = customer.get("id")
+        if not isinstance(customer_id, str) or not customer_id:
+            next_question = await self._ensure_customer_registered(
+                normalized_phone=normalized_phone,
+                known_data=customer_known_data_dict,
+            )
+            if self._fatal_error:
+                return
+            if next_question is not None:
+                self._expected_field = next_question.expected_field
+                self.session.say(next_question.text)
+                return
+
+        has_vehicle_id = any(
+            isinstance(service.get(key), str) and service.get(key).strip()
+            for key in ("vin", "unit_number", "unit_nickname")
+        )
+        has_location = isinstance(service.get("location"), str) and service.get("location").strip()
+        has_complaint = isinstance(service.get("complaint"), str) and service.get("complaint").strip()
+
+        if not has_vehicle_id:
+            self._expected_field = "vehicle_identifier"
+            self.session.say("What vehicle do you need service for?")
+            return
+        if not has_location:
+            self._expected_field = "location"
+            self.session.say("Where is the vehicle located?")
+            return
+        if not has_complaint:
+            self._expected_field = "complaint"
+            self.session.say("What's the issue with the vehicle?")
+            return
+
+        summary = await self._get_session_summary()
+        if summary is None:
+            return
+
+        service_count = summary.get("service_count")
+        service_count_int = service_count if isinstance(service_count, int) and service_count >= 0 else 0
+
+        if service_count_int < 1:
+            add_ok = await self._add_current_service_from_case_status(service=service)
+            if not add_ok:
+                return
+            summary = await self._get_session_summary()
+            if summary is None:
+                return
+
+        confirmation_text = self._build_final_confirmation_prompt(summary)
+        self._awaiting_final_confirmation = True
+        self.session.say(confirmation_text)
+
+    @dataclass(frozen=True)
+    class _NextQuestion:
+        expected_field: str
+        text: str
+
+    async def _ensure_customer_registered(
+        self,
+        *,
+        normalized_phone: str,
+        known_data: dict[str, Any],
+    ) -> "_NextQuestion | None":
+        try:
+            check_result = await self._call_backend_tool(
+                tool_call_id=f"tool-{uuid.uuid4().hex}",
+                tool_name="check_customer",
+                tool_arguments={
+                    "phone_number": normalized_phone,
+                    "known_data": known_data,
+                },
+            )
+        except BackendToolsClientError:
+            await self._speak_backend_unreachable_once()
+            return None
+
+        if check_result.get("found") is True:
+            return None
+
+        if check_result.get("ready_to_register") is True:
+            register_args = self._build_register_new_customer_args(
+                normalized_phone=normalized_phone,
+                known_data=known_data,
+            )
+            try:
+                await self._call_backend_tool(
+                    tool_call_id=f"tool-{uuid.uuid4().hex}",
+                    tool_name="register_new_customer",
+                    tool_arguments=register_args,
+                )
+            except BackendToolsClientError:
+                await self._speak_backend_unreachable_once()
+                return None
+            return None
+
+        next_fields = check_result.get("next_action_fields")
+        next_fields_list = next_fields if isinstance(next_fields, list) else []
+        next_field = next_fields_list[0] if next_fields_list else "first_name"
+
+        question = _question_for_customer_field(str(next_field))
+        return self._NextQuestion(expected_field=question.expected_field, text=question.text)
+
+    async def _maybe_validate_phone(self, phone_number: str) -> str | None:
+        normalized = phone_number.strip() if isinstance(phone_number, str) else ""
+        if normalized.startswith("+") and normalized[1:].isdigit() and normalized.startswith("+1") and len(normalized) == 12:
+            return normalized
+
+        try:
+            result = await self._call_backend_tool(
+                tool_call_id=f"tool-{uuid.uuid4().hex}",
+                tool_name="validate_phone",
+                tool_arguments={"phone_number": phone_number},
+            )
+        except BackendToolsClientError:
+            await self._speak_backend_unreachable_once()
+            return None
+
+        if result.get("valid") is not True:
+            return None
+
+        formatted = result.get("formatted")
+        return formatted.strip() if isinstance(formatted, str) and formatted.strip() else normalized or None
+
+    async def _get_session_summary(self) -> dict[str, Any] | None:
+        try:
+            return await self._call_backend_tool(
+                tool_call_id=f"tool-{uuid.uuid4().hex}",
+                tool_name="get_session_summary",
+                tool_arguments={},
+            )
+        except BackendToolsClientError:
+            await self._speak_backend_unreachable_once()
+            return None
+
+    async def _add_current_service_from_case_status(self, *, service: dict[str, Any]) -> bool:
+        tool_args: dict[str, Any] = {}
+        vin = service.get("vin")
+        if isinstance(vin, str) and vin.strip():
+            tool_args["vin_number"] = vin.strip()
+        unit_number = service.get("unit_number")
+        if isinstance(unit_number, str) and unit_number.strip():
+            tool_args["unit_number"] = unit_number.strip()
+        unit_nickname = service.get("unit_nickname")
+        if isinstance(unit_nickname, str) and unit_nickname.strip():
+            tool_args["unit_nickname"] = unit_nickname.strip()
+
+        location = service.get("location")
+        if isinstance(location, str) and location.strip():
+            tool_args["service_location"] = location.strip()
+        complaint = service.get("complaint")
+        if isinstance(complaint, str) and complaint.strip():
+            tool_args["service_complaint"] = complaint.strip()
+
+        if not any(key in tool_args for key in ("vin_number", "unit_number", "unit_nickname")):
+            self._expected_field = "vehicle_identifier"
+            self.session.say("What vehicle do you need service for?")
+            return False
+        if "service_location" not in tool_args:
+            self._expected_field = "location"
+            self.session.say("Where is the vehicle located?")
+            return False
+        if "service_complaint" not in tool_args:
+            self._expected_field = "complaint"
+            self.session.say("What's the issue with the vehicle?")
+            return False
+
+        try:
+            result = await self._call_backend_tool(
+                tool_call_id=f"tool-{uuid.uuid4().hex}",
+                tool_name="add_service",
+                tool_arguments=tool_args,
+            )
+        except BackendToolsClientError:
+            await self._speak_backend_unreachable_once()
+            return False
+
+        return result.get("added") is True
+
+    async def _finalize_booking(self) -> None:
+        self._awaiting_final_confirmation = False
+        try:
+            store_result = await self._call_backend_tool(
+                tool_call_id=f"tool-{uuid.uuid4().hex}",
+                tool_name="store_service_order",
+                tool_arguments={},
+            )
+        except BackendToolsClientError:
+            await self._speak_backend_unreachable_once()
+            return
+
+        if store_result.get("success") is not True:
+            self.session.say("I couldn't finalize that yet — let's double-check your details.")
+            return
+
+        try:
+            await self._call_backend_tool(
+                tool_call_id=f"tool-{uuid.uuid4().hex}",
+                tool_name="send_confirmation_sms",
+                tool_arguments={},
+            )
+        except BackendToolsClientError:
+            await self._speak_backend_unreachable_once()
+            return
+
+        self.session.say("You're all set. Thanks for calling AFS.")
+
+    def _build_register_new_customer_args(self, *, normalized_phone: str, known_data: dict[str, Any]) -> dict[str, Any]:
+        def _pick(key: str) -> str | None:
+            value = known_data.get(key)
+            return value.strip() if isinstance(value, str) and value.strip() else None
+
+        args: dict[str, Any] = {
+            "first_name": _pick("first_name") or "",
+            "last_name": _pick("last_name") or "",
+            "company_name": _pick("company_name") or "",
+            "email_address": _pick("email_address"),
+            "phone_number": normalized_phone,
+            "customer_position": _pick("customer_position"),
+            "marketing_source": _pick("marketing_source"),
+            "streetAddress": _pick("streetAddress") or "",
+            "city": _pick("city") or "",
+            "state": _pick("state") or "",
+            "country": _pick("country"),
+            "postalCode": _pick("postalCode") or "",
+        }
+        return args
+
+    def _build_final_confirmation_prompt(self, summary: dict[str, Any]) -> str:
+        services = summary.get("services")
+        services_list = services if isinstance(services, list) else []
+        first = services_list[0] if services_list and isinstance(services_list[0], dict) else {}
+
+        vehicle = None
+        for key in ("vin_number", "unit_number", "unit_nickname"):
+            value = first.get(key)
+            if isinstance(value, str) and value.strip():
+                vehicle = value.strip()
+                break
+
+        location = first.get("service_location")
+        location = location.strip() if isinstance(location, str) and location.strip() else None
+        complaint = first.get("service_complaint")
+        complaint = complaint.strip() if isinstance(complaint, str) and complaint.strip() else None
+
+        parts: list[str] = []
+        if vehicle:
+            parts.append(f"vehicle {vehicle}")
+        if location:
+            parts.append(f"at {location}")
+        if complaint:
+            parts.append(f"for {complaint}")
+
+        summary_text = ", ".join(parts) if parts else "everything"
+        return f"Just to confirm, I have {summary_text}. Is that correct?"
+
 
     async def _maybe_start_preflight(self) -> None:
         if self._started:

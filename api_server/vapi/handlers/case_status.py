@@ -13,6 +13,7 @@ from api_server.server.dependencies import DatabaseClient
 from api_server.vapi.correction_extractor import extract_corrections
 from api_server.vapi.case_status import build_case_status
 from api_server.vapi.fast_message_extractor import extract_customer_service_info_fast
+from api_server.vapi.intake_extractor import extract_intake_info_fast
 from api_server.vapi.message_extractor import extract_customer_service_info
 from api_server.vapi.message_classifier import MessageCategory, classify_message, classify_message_heuristic
 from api_server.vapi.response_mode import compute_response_mode
@@ -44,6 +45,30 @@ _NAME_TOKEN_STOPWORDS: frozenset[str] = frozenset(
     }
 )
 
+_EXPECTED_FIELD_CUSTOMER: frozenset[str] = frozenset(
+    {
+        "first_name",
+        "last_name",
+        "phone_number",
+        "company_name",
+        "email_address",
+        "streetAddress",
+        "city",
+        "state",
+        "postalCode",
+    }
+)
+_EXPECTED_FIELD_SERVICE: frozenset[str] = frozenset(
+    {
+        "vin",
+        "unit_number",
+        "unit_nickname",
+        "vehicle_identifier",
+        "location",
+        "complaint",
+    }
+)
+
 
 def _normalize_optional_str(value: object) -> str | None:
     if not isinstance(value, str):
@@ -67,6 +92,99 @@ def _set_if_missing(session: dict[str, Any], key: str, value: str | None) -> Non
     if isinstance(existing, str) and existing.strip():
         return
     session[key] = value
+
+
+def _set_or_override(session: dict[str, Any], key: str, value: str | None, *, overwrite: bool) -> None:
+    if value is None:
+        return
+    if overwrite:
+        session[key] = value
+        return
+    _set_if_missing(session, key, value)
+
+
+def _normalize_expected_field(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if normalized in _EXPECTED_FIELD_CUSTOMER or normalized in _EXPECTED_FIELD_SERVICE:
+        return normalized
+    return None
+
+
+def _apply_expected_field_answer(
+    *,
+    session: dict[str, Any],
+    expected_field: str,
+    answer: str,
+) -> bool:
+    if expected_field in _EXPECTED_FIELD_CUSTOMER:
+        value = _normalize_optional_str(answer)
+        if value is None:
+            return False
+
+        if expected_field == "first_name":
+            session["first_name"] = value
+            return True
+        if expected_field == "last_name":
+            session["last_name"] = value
+            return True
+        if expected_field == "phone_number":
+            session["phone_number"] = value
+            return True
+        if expected_field == "company_name":
+            session["company_name"] = value
+            return True
+        if expected_field == "email_address":
+            session["email_address"] = value
+            return True
+        if expected_field == "streetAddress":
+            session["streetAddress"] = value
+            return True
+        if expected_field == "city":
+            session["city"] = value
+            return True
+        if expected_field == "state":
+            session["state"] = value.upper() if len(value) == 2 else value
+            return True
+        if expected_field == "postalCode":
+            session["postalCode"] = value
+            return True
+
+        return False
+
+    if expected_field in _EXPECTED_FIELD_SERVICE:
+        services = session.get("services", [])
+        latest_service: dict[str, Any] | None = None
+        if isinstance(services, list) and services and isinstance(services[-1], dict):
+            latest_service = services[-1]
+
+        service_target = latest_service if latest_service is not None else session
+        value = _normalize_optional_str(answer)
+        if value is None:
+            return False
+
+        if expected_field == "location":
+            service_target["service_location"] = value
+        elif expected_field == "complaint":
+            service_target["service_complaint"] = value
+        elif expected_field == "vin":
+            service_target["vin_number"] = value
+        elif expected_field == "unit_number":
+            service_target["unit_number"] = value
+        elif expected_field in {"unit_nickname", "vehicle_identifier"}:
+            service_target["unit_nickname"] = value
+        else:
+            return False
+
+        if latest_service is not None and isinstance(services, list):
+            services[-1] = latest_service
+            session["services"] = services
+        return True
+
+    return False
 
 
 def _env_flag(name: str, default: bool) -> bool:
@@ -283,6 +401,26 @@ def _build_phone_confirmation_message(
     return f"Hey {name}! Is this still the best number to reach you?"
 
 
+def _build_customer_known_data(session: dict[str, Any]) -> dict[str, Any]:
+    # Reason: The slot-filling agent needs a stable, structured view of the session
+    # so it can make deterministic tool calls (register/add_service/store order)
+    # without requiring an LLM to reconstruct arguments.
+    return {
+        "first_name": _normalize_optional_str(session.get("first_name")),
+        "last_name": _normalize_optional_str(session.get("last_name")),
+        "company_name": _normalize_optional_str(session.get("company_name")),
+        "email_address": _normalize_optional_str(session.get("email_address")),
+        "phone_number": _normalize_optional_str(session.get("phone_number") or session.get("phone")),
+        "customer_position": _normalize_optional_str(session.get("customer_position")),
+        "marketing_source": _normalize_optional_str(session.get("marketing_source")),
+        "streetAddress": _normalize_optional_str(session.get("streetAddress")),
+        "city": _normalize_optional_str(session.get("city")),
+        "state": _normalize_optional_str(session.get("state")),
+        "country": _normalize_optional_str(session.get("country")),
+        "postalCode": _normalize_optional_str(session.get("postalCode")),
+    }
+
+
 async def handle_get_case_status(
     tool_call: dict[str, Any],
     message_payload: dict[str, Any],
@@ -305,6 +443,8 @@ async def handle_get_case_status(
         if normalized_message in {"handoff initiated.", "handoff initiated"}:
             handoff_initiated = True
             last_user_message = None
+
+    expected_field = _normalize_expected_field(tool_arguments.get("expected_field"))
 
     variable_values = _extract_variable_values(message_payload)
     override_customer_id = _get_override_customer_id(variable_values)
@@ -365,6 +505,7 @@ async def handle_get_case_status(
     use_gemini_extraction = _env_flag("GET_CASE_STATUS_GEMINI_EXTRACTION", True)
     use_gemini_corrections = _env_flag("GET_CASE_STATUS_GEMINI_CORRECTIONS", True)
     use_fast_extractor = _env_flag("GET_CASE_STATUS_FAST_EXTRACTOR", False)
+    slot_filling = _env_flag("GET_CASE_STATUS_SLOT_FILLING", False)
 
     category = MessageCategory.NORMAL
     if last_user_message is not None:
@@ -375,6 +516,19 @@ async def handle_get_case_status(
         )
 
     session = session_store.get(call_id) if call_id else {}
+    if slot_filling and call_id and expected_field is not None and isinstance(last_user_message, str):
+        try:
+            if _apply_expected_field_answer(
+                session=session,
+                expected_field=expected_field,
+                answer=last_user_message,
+            ):
+                session_store.set(call_id, session)
+        except Exception:
+            logger.exception(
+                "get_case_status expected_field handling failed",
+                extra={"call_id": call_id, "expected_field": expected_field},
+            )
     customer_record = None
     customer_source = None
 
@@ -426,6 +580,8 @@ async def handle_get_case_status(
 
     if last_user_message is not None and call_id:
         try:
+            extracted_payloads: list[tuple[str, dict[str, Any]]] = []
+
             extracted: dict[str, Any] | None = None
             if use_gemini_extraction:
                 extracted = await extract_customer_service_info(last_user_message)
@@ -437,14 +593,88 @@ async def handle_get_case_status(
                 extracted = extract_customer_service_info_fast(last_user_message)
 
             if isinstance(extracted, dict):
-                extracted_customer = extracted.get("customer")
-                extracted_service = extracted.get("service")
+                extracted_payloads.append(("default", extracted))
+
+            if slot_filling:
+                slot_extracted = extract_intake_info_fast(last_user_message)
+                if isinstance(slot_extracted, dict):
+                    extracted_payloads.append(("slot", slot_extracted))
+
+            for source, payload in extracted_payloads:
+                overwrite = source == "slot"
+                extracted_customer = payload.get("customer")
+                extracted_service = payload.get("service")
 
                 if isinstance(extracted_customer, dict):
-                    _set_if_missing(session, "first_name", _normalize_optional_str(extracted_customer.get("first_name")))
-                    _set_if_missing(session, "last_name", _normalize_optional_str(extracted_customer.get("last_name")))
-                    _set_if_missing(session, "phone_number", _normalize_optional_str(extracted_customer.get("phone")))
-                    _set_if_missing(session, "company_name", _normalize_optional_str(extracted_customer.get("company")))
+                    _set_or_override(
+                        session,
+                        "first_name",
+                        _normalize_optional_str(extracted_customer.get("first_name")),
+                        overwrite=overwrite,
+                    )
+                    _set_or_override(
+                        session,
+                        "last_name",
+                        _normalize_optional_str(extracted_customer.get("last_name")),
+                        overwrite=overwrite,
+                    )
+                    _set_or_override(
+                        session,
+                        "phone_number",
+                        _normalize_optional_str(extracted_customer.get("phone")),
+                        overwrite=overwrite,
+                    )
+                    _set_or_override(
+                        session,
+                        "company_name",
+                        _normalize_optional_str(extracted_customer.get("company")),
+                        overwrite=overwrite,
+                    )
+
+                    if slot_filling:
+                        _set_or_override(
+                            session,
+                            "email_address",
+                            _normalize_optional_str(extracted_customer.get("email_address")),
+                            overwrite=overwrite,
+                        )
+                        _set_or_override(
+                            session,
+                            "streetAddress",
+                            _normalize_optional_str(extracted_customer.get("streetAddress")),
+                            overwrite=overwrite,
+                        )
+                        _set_or_override(
+                            session,
+                            "city",
+                            _normalize_optional_str(extracted_customer.get("city")),
+                            overwrite=overwrite,
+                        )
+                        state = _normalize_optional_str(extracted_customer.get("state"))
+                        _set_or_override(
+                            session,
+                            "state",
+                            state.upper() if state is not None else None,
+                            overwrite=overwrite,
+                        )
+                        _set_or_override(
+                            session,
+                            "postalCode",
+                            _normalize_optional_str(extracted_customer.get("postalCode")),
+                            overwrite=overwrite,
+                        )
+                        _set_or_override(
+                            session,
+                            "customer_position",
+                            _normalize_optional_str(extracted_customer.get("customer_position")),
+                            overwrite=overwrite,
+                        )
+                        _set_or_override(
+                            session,
+                            "marketing_source",
+                            _normalize_optional_str(extracted_customer.get("marketing_source")),
+                            overwrite=overwrite,
+                        )
 
                     updates_for_db: dict[str, object] = {}
                     if customer_record is not None and use_gemini_extraction:
@@ -490,44 +720,51 @@ async def handle_get_case_status(
                     # Reason: Prefer saving service fields into the current service (if one exists),
                     # otherwise store them on session for case-status completeness checks.
                     service_target = latest_service if latest_service is not None else session
-                    _set_if_missing(
+                    _set_or_override(
                         service_target,
                         "service_location",
                         _normalize_optional_str(extracted_service.get("location")),
+                        overwrite=overwrite,
                     )
-                    _set_if_missing(
+                    _set_or_override(
                         service_target,
                         "service_complaint",
                         _normalize_optional_str(extracted_service.get("complaint")),
+                        overwrite=overwrite,
                     )
-                    _set_if_missing(
+                    _set_or_override(
                         service_target,
                         "unit_number",
                         _normalize_optional_str(extracted_service.get("unit_number")),
+                        overwrite=overwrite,
                     )
-                    _set_if_missing(
+                    _set_or_override(
                         service_target,
                         "vin_number",
                         _normalize_optional_str(extracted_service.get("vin")),
+                        overwrite=overwrite,
                     )
                     vehicle_description = _normalize_optional_str(extracted_service.get("vehicle_description"))
-                    _set_if_missing(
+                    _set_or_override(
                         service_target,
                         "vehicle_description",
                         vehicle_description,
+                        overwrite=overwrite,
                     )
                     # Reason: Some callers describe the vehicle (e.g. "blue truck") instead of
                     # providing a VIN/unit number. Treat it as a nickname so we can move on.
-                    _set_if_missing(
+                    _set_or_override(
                         service_target,
                         "unit_nickname",
                         vehicle_description,
+                        overwrite=overwrite,
                     )
 
                     if latest_service is not None and isinstance(services, list):
                         services[-1] = latest_service
                         session["services"] = services
 
+            if extracted_payloads:
                 session_store.set(call_id, session)
         except Exception:
             # Reason: Extraction is best-effort and should never break the call flow.
@@ -624,6 +861,9 @@ async def handle_get_case_status(
                 "next_action": "Collect vehicle info and service complaint.",
             }
         )
+
+    if slot_filling:
+        case_status["customer_known_data"] = _build_customer_known_data(session)
 
     # Backwards-compat: only add message-aware fields when callers pass last_user_message.
     if last_user_message is None:

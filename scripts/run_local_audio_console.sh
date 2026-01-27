@@ -24,7 +24,9 @@ export SESSION_REPORTS_URL="http://127.0.0.1:8000/observability/session-report"
 # - Fast intake: greet + accept an info dump on the first user turn (no callback gate).
 # - Deterministic get_case_status: avoid network calls inside the critical path.
 export AGENT_FAST_INTAKE="${AGENT_FAST_INTAKE:-1}"
+export AGENT_SLOT_FILLING="${AGENT_SLOT_FILLING:-1}"
 export AGENT_GREETING="${AGENT_GREETING:-Hello, this is Sarah from AFS, how can I help?}"
+export GET_CASE_STATUS_SLOT_FILLING="${GET_CASE_STATUS_SLOT_FILLING:-1}"
 export GET_CASE_STATUS_FAST_EXTRACTOR="${GET_CASE_STATUS_FAST_EXTRACTOR:-1}"
 export GET_CASE_STATUS_GEMINI_CLASSIFICATION="${GET_CASE_STATUS_GEMINI_CLASSIFICATION:-0}"
 export GET_CASE_STATUS_GEMINI_EXTRACTION="${GET_CASE_STATUS_GEMINI_EXTRACTION:-0}"
