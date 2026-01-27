@@ -19,6 +19,18 @@ Run backend + agent locally, in audio mode, and save logs/artifacts to a per-run
 ./scripts/run_local_audio_console.sh
 ```
 
+Defaults this script sets (override at invocation time if needed):
+- `AGENT_FAST_INTAKE=1` + `AGENT_GREETING="Hello, this is Sarah from AFS, how can I help?"`
+- `GET_CASE_STATUS_FAST_EXTRACTOR=1` and Gemini features **off** (`GET_CASE_STATUS_GEMINI_*=0`) for speed/determinism
+
+Enable Gemini (networked) for `get_case_status` if you want to test it:
+```bash
+GET_CASE_STATUS_GEMINI_CLASSIFICATION=1 \
+GET_CASE_STATUS_GEMINI_EXTRACTION=1 \
+GET_CASE_STATUS_GEMINI_CORRECTIONS=1 \
+./scripts/run_local_audio_console.sh
+```
+
 Artifacts are written under:
 - `local-observability/run-<timestamp>/`
 
@@ -187,7 +199,7 @@ Expected output:
 
 ## Implication
 If the agent appears “stuck” locally, it usually means one of:
-- Preflight isn't complete yet (callback number / customer check gate).
+- You disabled fast intake (`AGENT_FAST_INTAKE=0`) and preflight isn't complete yet (callback number / customer check gate).
 - STT/TTS provider connectivity issues.
 - Backend is returning `response_mode="tool_first"` with an empty `immediate_message` (silence).
 

@@ -20,6 +20,16 @@ export VAPI_TOOLS_LOG_TIMING="${VAPI_TOOLS_LOG_TIMING:-1}"
 export BACKEND_TOOLS_URL="http://127.0.0.1:8000/vapi/tools"
 export SESSION_REPORTS_URL="http://127.0.0.1:8000/observability/session-report"
 
+# Local UX defaults (override at invocation time if needed):
+# - Fast intake: greet + accept an info dump on the first user turn (no callback gate).
+# - Deterministic get_case_status: avoid network calls inside the critical path.
+export AGENT_FAST_INTAKE="${AGENT_FAST_INTAKE:-1}"
+export AGENT_GREETING="${AGENT_GREETING:-Hello, this is Sarah from AFS, how can I help?}"
+export GET_CASE_STATUS_FAST_EXTRACTOR="${GET_CASE_STATUS_FAST_EXTRACTOR:-1}"
+export GET_CASE_STATUS_GEMINI_CLASSIFICATION="${GET_CASE_STATUS_GEMINI_CLASSIFICATION:-0}"
+export GET_CASE_STATUS_GEMINI_EXTRACTION="${GET_CASE_STATUS_GEMINI_EXTRACTION:-0}"
+export GET_CASE_STATUS_GEMINI_CORRECTIONS="${GET_CASE_STATUS_GEMINI_CORRECTIONS:-0}"
+
 BACKEND_STDOUT_LOG="${RUN_DIR}/backend.stdout.log"
 
 echo "Starting backend..."

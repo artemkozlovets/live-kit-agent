@@ -429,6 +429,10 @@ async def handle_get_case_status(
             extracted: dict[str, Any] | None = None
             if use_gemini_extraction:
                 extracted = await extract_customer_service_info(last_user_message)
+                # Reason: Gemini can fail (invalid JSON / timeouts). When enabled, allow a
+                # deterministic fallback so the conversation can still progress.
+                if extracted is None and use_fast_extractor:
+                    extracted = extract_customer_service_info_fast(last_user_message)
             elif use_fast_extractor:
                 extracted = extract_customer_service_info_fast(last_user_message)
 
@@ -506,10 +510,18 @@ async def handle_get_case_status(
                         "vin_number",
                         _normalize_optional_str(extracted_service.get("vin")),
                     )
+                    vehicle_description = _normalize_optional_str(extracted_service.get("vehicle_description"))
                     _set_if_missing(
                         service_target,
                         "vehicle_description",
-                        _normalize_optional_str(extracted_service.get("vehicle_description")),
+                        vehicle_description,
+                    )
+                    # Reason: Some callers describe the vehicle (e.g. "blue truck") instead of
+                    # providing a VIN/unit number. Treat it as a nickname so we can move on.
+                    _set_if_missing(
+                        service_target,
+                        "unit_nickname",
+                        vehicle_description,
                     )
 
                     if latest_service is not None and isinstance(services, list):

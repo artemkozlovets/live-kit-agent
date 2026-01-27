@@ -270,6 +270,18 @@ class VapiAdapterAgent(Agent):
             "yes",
             "y",
         }
+        # Fast intake mode is an opt-in UX:
+        # - greet once on enter
+        # - do not block the first user message behind the callback-number preflight
+        # - call get_case_status immediately on the first user turn
+        self._fast_intake = os.getenv("AGENT_FAST_INTAKE", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "y",
+        }
+        self._greeting = os.getenv("AGENT_GREETING", "").strip() or None
+        self._greeted = False
         self._started = False
         self._entered_main_flow = False
         self._fatal_error = False
@@ -309,6 +321,12 @@ class VapiAdapterAgent(Agent):
 
     async def on_enter(self) -> None:
         self._update_sip_phone_number_from_room()
+        if self._fast_intake:
+            self._maybe_greet()
+            # Reason: In fast intake, don't trigger the callback-number preflight prompts.
+            self._started = True
+            return
+
         await self._maybe_start_preflight()
 
     async def on_user_turn_completed(self, turn_ctx: ChatContext, new_message: Any) -> None:
@@ -320,6 +338,14 @@ class VapiAdapterAgent(Agent):
         user_text = getattr(new_message, "text_content", None) or ""
         user_text = user_text.strip()
         if not user_text:
+            return
+
+        if self._fast_intake:
+            # Fast intake: greet once (if configured), then treat every turn as a business turn.
+            self._maybe_greet()
+            self._started = True
+            self._entered_main_flow = True
+            await self._handle_business_turn(user_text)
             return
 
         if not self._started:
@@ -341,11 +367,21 @@ class VapiAdapterAgent(Agent):
             return
 
         self._started = True
+        if self._fast_intake:
+            return
         if self._skip_preflight and not self._sip_phone_number:
             self._flow.bypass_preflight(callback_number="web")
             return
 
         await self._run_actions(self._flow.start())
+
+    def _maybe_greet(self) -> None:
+        if self._greeted:
+            return
+        if not isinstance(self._greeting, str) or not self._greeting.strip():
+            return
+        self._greeted = True
+        self.session.say(self._greeting.strip())
 
     async def _handle_preflight_turn(self, user_text: str) -> None:
         phone_in_text = _extract_phone_number(user_text)

@@ -259,7 +259,8 @@ One-command local run (backend + audio console + saved artifacts):
 ```
 
 Agent behavior gotchas:
-- The agent won't call `get_case_status` until preflight completes (callback number validated + customer check).
+- By default, the agent won't call `get_case_status` until preflight completes (callback number validated + customer check).
+- If you run with `AGENT_FAST_INTAKE=1` (the local helper script sets this by default), the agent will greet and call `get_case_status` immediately on the first user turn.
 - For web calls (no SIP), set `SKIP_CALLBACK_PREFLIGHT=1` so the agent can proceed.
 
 Local backend (in-memory DB) for quick reproductions:
