@@ -94,25 +94,83 @@ def build_case_status(
             or _normalize_optional_str(session.get("service_complaint")),
         }
 
-        missing_fields: list[str] = []
-        if first_name is None:
-            missing_fields.append("first_name")
-        if last_name is None:
-            missing_fields.append("last_name")
-        if phone is None:
-            missing_fields.append("phone")
+        has_first_name = first_name is not None
+        has_last_name = last_name is not None
+        has_phone = phone is not None
+        to_service_collection = has_first_name and has_last_name and has_phone
 
-        if first_name is None or last_name is None:
-            next_action = (
-                "This is a new call. Start by collecting the customer's name."
-                if is_session_empty
-                else "Start by asking for the customer's name."
-            )
-        elif phone is None:
-            next_action = "Collect the customer's phone number"
+        has_location = service["location"] is not None
+        has_complaint = service["complaint"] is not None
+        has_vehicle_id = any((service["vin"], service["unit_number"], service["unit_nickname"]))
+        has_saved_service = bool(services)
+        # Reason: Booking requires a real customer_id (confirm_services/store_service_order depend on it).
+        to_booking = (
+            to_service_collection
+            and customer_id is not None
+            and has_saved_service
+            and has_location
+            and has_complaint
+            and has_vehicle_id
+        )
+
+        if not to_service_collection:
+            current_phase = "customer_intake"
+        elif not to_booking:
+            current_phase = "service_collection"
         else:
+            current_phase = "booking"
+
+        missing_fields: list[str] = []
+        if current_phase == "customer_intake":
+            if first_name is None:
+                missing_fields.append("first_name")
+            if last_name is None:
+                missing_fields.append("last_name")
+            if phone is None:
+                missing_fields.append("phone")
+
+            if first_name is None or last_name is None:
+                next_action = (
+                    "This is a new call. Start by collecting the customer's name."
+                    if is_session_empty
+                    else "Start by asking for the customer's name."
+                )
+            elif phone is None:
+                next_action = "Collect the customer's phone number"
+            else:
+                next_action = "Validate the customer's phone number, then look up or register the customer."
+        elif current_phase == "service_collection":
+            if not has_location:
+                missing_fields.append("location")
+            if not has_complaint:
+                missing_fields.append("complaint")
+            if not has_vehicle_id:
+                missing_fields.append("unit_number" if vin_fallback_triggered else "vin")
+
+            if not has_location and not has_complaint:
+                next_action = "Ask what's wrong with the vehicle and where it's located."
+            elif not has_complaint:
+                next_action = "Ask what's wrong with the vehicle."
+            elif not has_location:
+                next_action = "Ask where the vehicle is located."
+            elif not has_vehicle_id:
+                next_action = (
+                    "VIN validation failed 3 times. Ask for the unit number or a nickname for the vehicle instead."
+                    if vin_fallback_triggered
+                    else "Ask for the vehicle's VIN"
+                )
+            elif not has_saved_service:
+                next_action = "Service details collected. Call add_service to save this service in the session."
+            else:
+                next_action = "All information collected. Confirm details with customer and hand off to Booking."
+        else:
+            services_confirmed = bool(session.get("services_confirmed", False))
+            if not services_confirmed:
+                missing_fields.append("confirmation")
             next_action = (
-                "Validate the customer's phone number, then look up or register the customer."
+                "All information collected. Confirm details with customer and hand off to Booking."
+                if not services_confirmed
+                else "Details confirmed. Proceed to store the service order."
             )
 
         case_state: dict[str, Any] = {
@@ -132,8 +190,11 @@ def build_case_status(
                 "status": None,
             },
             "missing_fields": missing_fields,
-            "current_phase": "customer_intake",
-            "ready_for_handoff": {"to_service_collection": False, "to_booking": False},
+            "current_phase": current_phase,
+            "ready_for_handoff": {
+                "to_service_collection": to_service_collection,
+                "to_booking": to_booking,
+            },
             "next_action": next_action,
             "validation_state": {
                 "phone_attempts": phone_attempts,

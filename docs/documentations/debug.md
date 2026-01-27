@@ -239,6 +239,24 @@ These env vars increase signal or timing detail:
 - `GOOGLE_LLM_RETRY_INTERVAL_S=...` (agent: tool parsing retry interval; defaults to 2s)
 - `SESSION_REPORTS_URL=...` (agent: enables session report POST on session end)
 - `SESSION_REPORTS_TOKEN=...` (agent + backend: bearer auth for session report endpoint)
+- `LOCAL_OBSERVABILITY_DIR=...` (local: persist logs + session reports to disk)
+
+When `LOCAL_OBSERVABILITY_DIR` is set:
+- Backend writes:
+  - `backend.log.jsonl` (structured logs)
+  - `backend.tools.jsonl` (one JSONL event per `/vapi/tools` request with tool names + result keys)
+  - `session-reports/*.json` (persisted session reports ingested via `POST /observability/session-report`)
+- Agent writes:
+  - `agent.log.jsonl` (structured logs)
+
+Console mode note:
+- `python -m livekit_agent.agent console --record` also writes a LiveKit SDK session artifact directory under
+  `console-recordings/` (includes `session_report.json` + audio recording metadata).
+
+One-command local run (backend + audio console + saved artifacts):
+```bash
+./scripts/run_local_audio_console.sh
+```
 
 Agent behavior gotchas:
 - The agent won't call `get_case_status` until preflight completes (callback number validated + customer check).

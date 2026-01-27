@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Any
 
 from api_server.models.database_records import CustomerRecord
@@ -22,6 +23,26 @@ from api_server.utils.phone_formatting import normalize_us_phone_number
 
 
 logger = logging.getLogger(__name__)
+
+_NAME_TOKEN_RE = re.compile(r"^[A-Za-z][A-Za-z'\-]{1,40}$")
+_NAME_TOKEN_STOPWORDS: frozenset[str] = frozenset(
+    {
+        # Reason: Avoid treating common non-name tokens as names when callers answer prompts.
+        "hello",
+        "hi",
+        "hey",
+        "here",
+        "yes",
+        "no",
+        "yep",
+        "yeah",
+        "nope",
+        "ok",
+        "okay",
+        "thanks",
+        "thank",
+    }
+)
 
 
 def _normalize_optional_str(value: object) -> str | None:
@@ -65,6 +86,29 @@ def _split_full_name(full_name: str | None) -> tuple[str | None, str | None]:
     if len(parts) == 1:
         return parts[0], None
     return parts[0], " ".join(parts[1:])
+
+
+def _extract_name_token(message: str) -> str | None:
+    """Best-effort name capture from a 1-word reply (e.g., 'John')."""
+    if not isinstance(message, str):
+        return None
+
+    stripped = message.strip()
+    if not stripped:
+        return None
+
+    # Strip common punctuation at the edges (STT often includes trailing "." / "?").
+    cleaned = re.sub(r"^[^A-Za-z]+|[^A-Za-z]+$", "", stripped)
+    if not cleaned:
+        return None
+
+    if not _NAME_TOKEN_RE.match(cleaned):
+        return None
+
+    if cleaned.lower() in _NAME_TOKEN_STOPWORDS:
+        return None
+
+    return cleaned.title()
 
 
 def _extract_variable_values(message_payload: dict[str, Any]) -> dict[str, Any]:
@@ -478,6 +522,31 @@ async def handle_get_case_status(
             logger.exception("get_case_status message extraction failed", extra={"call_id": call_id})
 
     case_status = build_case_status(session=session, customer_record=customer_record)
+
+    if last_user_message is not None and call_id and category == MessageCategory.NORMAL:
+        name_token = _extract_name_token(last_user_message)
+        if (
+            isinstance(name_token, str)
+            and name_token
+            and case_status.get("current_phase") == "customer_intake"
+        ):
+            missing_fields = (
+                case_status.get("missing_fields")
+                if isinstance(case_status.get("missing_fields"), list)
+                else []
+            )
+            if "first_name" in missing_fields:
+                before = session.get("first_name")
+                _set_if_missing(session, "first_name", name_token)
+                if session.get("first_name") != before:
+                    session_store.set(call_id, session)
+                    case_status = build_case_status(session=session, customer_record=customer_record)
+            elif "last_name" in missing_fields and _normalize_optional_str(session.get("first_name")) is not None:
+                before = session.get("last_name")
+                _set_if_missing(session, "last_name", name_token)
+                if session.get("last_name") != before:
+                    session_store.set(call_id, session)
+                    case_status = build_case_status(session=session, customer_record=customer_record)
 
     phone_confirmation_pending = bool(session.get("phone_confirmation_pending", False))
     if (

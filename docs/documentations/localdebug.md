@@ -1,7 +1,36 @@
-# Local Debug Findings (Console Mode)
+# Local Debugging (Console Mode)
 
 ## Big picture
-In local console mode, the agent can hear you and call the backend tools successfully, but it may appear to “lag” if the backend does not return a speakable `immediate_message`. In that case, the agent has nothing to say even though `get_case_status` is working.
+Local debugging is fastest when you can:
+1) run the agent + backend locally, and
+2) save durable artifacts (logs + tool traces + session reports) so you don't have to scroll terminal output.
+
+This repo now supports a local “record everything” workflow via:
+- `LOCAL_OBSERVABILITY_DIR` (writes JSONL logs + tool traces + session reports to disk)
+- `python -m livekit_agent.agent console --record` (LiveKit SDK console recordings)
+- `./scripts/run_local_audio_console.sh` (one-command: backend + audio console + artifacts)
+
+Important: console mode still uses external STT/TTS providers (Deepgram/Cartesia) unless you swap them out.
+
+## Quick start (recommended)
+Run backend + agent locally, in audio mode, and save logs/artifacts to a per-run folder:
+
+```bash
+./scripts/run_local_audio_console.sh
+```
+
+Artifacts are written under:
+- `local-observability/run-<timestamp>/`
+
+You get:
+- `agent.log.jsonl` (agent logs)
+- `backend.log.jsonl` (backend logs)
+- `backend.tools.jsonl` (one JSONL event per `/vapi/tools` request with tool names + result keys)
+- `session-reports/*.json` (persisted session reports ingested at session end)
+- `backend.stdout.log` (uvicorn stdout/stderr)
+
+LiveKit console recordings (when `--record` is on) also go to:
+- `console-recordings/session-*/session_report.json`
 
 ## Debug locally (agent) — options + tradeoffs
 Debugging is fastest when you isolate the layer you care about. A good default progression is:
@@ -36,10 +65,20 @@ Cons:
 - Two processes to manage.
 - In-memory mode differs from Postgres (state is lost on restart).
 
+Local observability add-on (recommended):
+```bash
+export LOCAL_OBSERVABILITY_DIR="./local-observability/manual"
+export SESSION_REPORTS_URL="http://127.0.0.1:8000/observability/session-report"
+```
+
 ### 3) Agent `console` mode (terminal voice, local-only)
 How:
 ```bash
 python -m livekit_agent.agent console
+```
+Record audio + session report to `console-recordings/`:
+```bash
+python -m livekit_agent.agent console --record
 ```
 Pros:
 - Agent runs fully locally (great for breakpoints/logging).
@@ -123,19 +162,36 @@ Cons:
   - `then_action: "This is a new call. Start by collecting the customer's name."`
   This yields **no spoken output**, so the user hears silence even though the system is working.
 
+## Fixes + improvements we added (2026-01-26)
+To make local debugging less painful and reduce “stuck/silent” behavior:
+- **Backend now returns speakable prompts** (non-empty `immediate_message`) when required fields are missing, so the agent doesn't go silent.
+- **Persist key session fields** in local runs:
+  - Persist normalized `phone_number` during `validate_phone` so the flow doesn't re-ask forever.
+  - Deterministic 1-word name fallback (e.g., "John") so STT quirks don't stall intake.
+- **Local observability artifacts**:
+  - Set `LOCAL_OBSERVABILITY_DIR=...` to save `backend.log.jsonl`, `agent.log.jsonl`, `backend.tools.jsonl`, and `session-reports/*.json`.
+  - Added `./scripts/run_local_audio_console.sh` to run everything with one command and auto-create a per-run artifacts folder.
+- **Env sanity check**:
+  - `GET /health/env` to confirm keys are loaded (without printing secrets).
+  - Backend now auto-loads `.env` when running via uvicorn (so you don't have to `source .env` manually).
+
 ## Repro (backend-only, no audio/TTY needed)
 ```bash
 curl -sS http://127.0.0.1:8000/vapi/tools \
   -H "Content-Type: application/json" \
   -d '{"message":{"type":"tool-calls","call":{"id":"debug-call","customer":{"number":"+13053179840"}},"customer":{"number":"+13053179840"},"toolCallList":[{"id":"tool-1","function":{"name":"get_case_status","arguments":"{\"last_user_message\":\"I have a flat tire.\"}"}}]}}' | jq .
 ```
-Expected output (key fields):
-- `response_mode` = `tool_first`
-- `immediate_message` = `null`
-- `then_action` = “Start by collecting the customer's name.”
+Expected output:
+- Returns a JSON tool result (no HTTP error).
+- After the 2026-01-26 fixes, you should generally see a non-empty `immediate_message` when info is missing.
 
 ## Implication
-To avoid silence in local audio mode, the backend should provide a non-empty `immediate_message` when a user reports a problem (e.g., “I have a flat tire”).
+If the agent appears “stuck” locally, it usually means one of:
+- Preflight isn't complete yet (callback number / customer check gate).
+- STT/TTS provider connectivity issues.
+- Backend is returning `response_mode="tool_first"` with an empty `immediate_message` (silence).
+
+The local artifacts in `LOCAL_OBSERVABILITY_DIR` make this easy to confirm without copy/paste.
 
 ## Services involved
 - Agent: `python -m livekit_agent.agent console`

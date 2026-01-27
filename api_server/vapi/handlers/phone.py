@@ -133,6 +133,12 @@ def handle_validate_phone(
                     normalized_phone_number = normalize_us_phone_number(caller_number)
 
     if normalized_phone_number is not None:
+        call_id = get_call_id(message_payload)
+        if call_id:
+            session = session_store.get(call_id)
+            # Reason: Persist the normalized number so get_case_status doesn't re-ask for it.
+            session["phone_number"] = normalized_phone_number
+            session_store.set(call_id, session)
         # Reason: Guide the assistant to immediately proceed to customer lookup
         return {
             "valid": True,

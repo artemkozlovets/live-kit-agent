@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import traceback
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -33,6 +34,70 @@ _AUTH_HEADER_REDACTIONS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(Authorization['\"]:\s*['\"]Token\s+)[^'\"]+", re.IGNORECASE), r"\1***"),
     (re.compile(r"(Authorization['\"]:\s*['\"]Bearer\s+)[^'\"]+", re.IGNORECASE), r"\1***"),
 )
+
+_LOG_RECORD_BUILTINS = {
+    "name",
+    "msg",
+    "args",
+    "levelname",
+    "levelno",
+    "pathname",
+    "filename",
+    "module",
+    "exc_info",
+    "exc_text",
+    "stack_info",
+    "lineno",
+    "funcName",
+    "created",
+    "msecs",
+    "relativeCreated",
+    "thread",
+    "threadName",
+    "processName",
+    "process",
+}
+
+
+class _JsonLogFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        payload: dict[str, Any] = {
+            "ts_unix_s": record.created,
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+
+        extra: dict[str, Any] = {}
+        for key, value in record.__dict__.items():
+            if key in _LOG_RECORD_BUILTINS:
+                continue
+            extra[key] = value
+        if extra:
+            payload["extra"] = extra
+
+        if record.exc_info:
+            payload["exc"] = "".join(traceback.format_exception(*record.exc_info))
+
+        return json.dumps(payload, ensure_ascii=True, default=str)
+
+
+def _maybe_enable_local_file_logging() -> None:
+    local_dir = os.getenv("LOCAL_OBSERVABILITY_DIR", "").strip()
+    if not local_dir:
+        return
+
+    os.makedirs(local_dir, exist_ok=True)
+    log_path = os.path.join(local_dir, "agent.log.jsonl")
+
+    handler = logging.FileHandler(log_path, encoding="utf-8")
+    handler.setFormatter(_JsonLogFormatter())
+    handler.setLevel(logging.DEBUG)
+
+    root = logging.getLogger()
+    if any(getattr(h, "baseFilename", None) == handler.baseFilename for h in root.handlers):
+        return
+    root.addHandler(handler)
 
 
 def _redact_secrets(text: str) -> str:
@@ -691,4 +756,5 @@ async def entrypoint(ctx: JobContext) -> None:
 
 if __name__ == "__main__":
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+    _maybe_enable_local_file_logging()
     cli.run_app(server)

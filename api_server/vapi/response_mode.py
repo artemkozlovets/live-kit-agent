@@ -29,7 +29,12 @@ def _normal_immediate_message(case_state: dict[str, Any]) -> str | None:
 
     current_phase = case_state.get("current_phase")
     if current_phase == "customer_intake":
+        customer = case_state.get("customer") if isinstance(case_state.get("customer"), dict) else {}
+        has_first_name = isinstance(customer.get("first_name"), str) and customer.get("first_name").strip()
+
         if "first_name" in missing_fields or "last_name" in missing_fields:
+            if "last_name" in missing_fields and has_first_name:
+                return "Thanks. What's your last name?"
             return "Thanks. What's your name?"
         if "phone" in missing_fields:
             return "Thanks. What's the best phone number to reach you?"
