@@ -3,7 +3,7 @@
 ## Big picture
 The fastest way to debug this repo locally is:
 1) run the **tools backend** + the **LiveKit agent console (audio)** on your machine, and
-2) save **durable artifacts** (agent logs, backend logs, `/vapi/tools` traces, session reports) to disk per run.
+2) save **durable artifacts** (agent logs, backend logs, `/tools` traces, session reports) to disk per run.
 
 ## One-command local run (backend + audio agent + saved logs)
 ```bash
@@ -46,4 +46,3 @@ You can override these at invocation time:
 ## Canonical doc
 The detailed guide lives at:
 - `docs/documentations/localdebug.md`
-

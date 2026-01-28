@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import sys
 from dataclasses import dataclass, field
@@ -64,55 +63,42 @@ class EvalResult:
 
 
 def _extract_tool_call(payload: dict[str, Any]) -> tuple[str, str, dict[str, Any], str | None, str | None]:
-    message = payload.get("message") if isinstance(payload, dict) else None
-    if not isinstance(message, dict):
-        raise ValueError("Invalid Vapi payload: missing message object")
-
-    tool_calls = message.get("toolCallList")
-    if not isinstance(tool_calls, list) or not tool_calls:
-        raise ValueError("Invalid Vapi payload: missing toolCallList")
-
-    tool_call = tool_calls[0]
-    if not isinstance(tool_call, dict):
-        raise ValueError("Invalid Vapi payload: toolCallList[0] must be an object")
-
-    tool_call_id = tool_call.get("id")
-    function = tool_call.get("function")
-    if not isinstance(tool_call_id, str) or not tool_call_id:
-        raise ValueError("Invalid Vapi payload: toolCallList[0].id missing")
-    if not isinstance(function, dict):
-        raise ValueError("Invalid Vapi payload: toolCallList[0].function missing")
-
-    tool_name = function.get("name")
-    raw_args = function.get("arguments", "")
-    if not isinstance(tool_name, str) or not tool_name:
-        raise ValueError("Invalid Vapi payload: toolCallList[0].function.name missing")
-    if not isinstance(raw_args, str):
-        raise ValueError("Invalid Vapi payload: toolCallList[0].function.arguments must be a string")
-
-    try:
-        tool_args = json.loads(raw_args) if raw_args.strip() else {}
-    except json.JSONDecodeError as exc:
-        raise ValueError("Invalid Vapi payload: function.arguments is not JSON") from exc
-
-    if not isinstance(tool_args, dict):
-        raise ValueError("Invalid Vapi payload: function.arguments must be a JSON object")
-
-    call = message.get("call", {})
-    customer_number: str | None = None
-    if isinstance(call, dict):
-        customer = call.get("customer")
-        if isinstance(customer, dict) and isinstance(customer.get("number"), str):
-            customer_number = customer.get("number")
-
-    sip_number: str | None = None
-    customer = message.get("customer")
-    if isinstance(customer, dict) and isinstance(customer.get("number"), str):
-        sip_number = customer.get("number")
+    call = payload.get("call") if isinstance(payload, dict) else None
+    if not isinstance(call, dict):
+        raise ValueError("Invalid tools v2 payload: missing call object")
 
     call_id = call.get("id")
     if not isinstance(call_id, str) or not call_id.strip():
-        raise ValueError("Invalid Vapi payload: message.call.id missing")
+        raise ValueError("Invalid tools v2 payload: call.id missing")
+
+    tool_calls = payload.get("tool_calls")
+    if not isinstance(tool_calls, list) or not tool_calls:
+        raise ValueError("Invalid tools v2 payload: missing tool_calls")
+
+    tool_call = tool_calls[0]
+    if not isinstance(tool_call, dict):
+        raise ValueError("Invalid tools v2 payload: tool_calls[0] must be an object")
+
+    tool_call_id = tool_call.get("id")
+    tool_name = tool_call.get("name")
+    tool_args = tool_call.get("arguments")
+
+    if not isinstance(tool_call_id, str) or not tool_call_id.strip():
+        raise ValueError("Invalid tools v2 payload: tool_calls[0].id missing")
+    if not isinstance(tool_name, str) or not tool_name.strip():
+        raise ValueError("Invalid tools v2 payload: tool_calls[0].name missing")
+    if not isinstance(tool_args, dict):
+        raise ValueError("Invalid tools v2 payload: tool_calls[0].arguments must be an object")
+
+    customer_number: str | None = None
+    call_customer = call.get("customer")
+    if isinstance(call_customer, dict) and isinstance(call_customer.get("number"), str):
+        customer_number = call_customer.get("number")
+
+    sip_number: str | None = None
+    customer = payload.get("customer")
+    if isinstance(customer, dict) and isinstance(customer.get("number"), str):
+        sip_number = customer.get("number")
 
     return tool_call_id, tool_name, tool_args, customer_number, sip_number
 
@@ -127,7 +113,7 @@ async def run_eval_scenario(scenario: EvalScenario, *, timeout_s: float = 2.0) -
 
     steps = list(scenario.backend_steps)
 
-    async def post_json(_: str, payload: dict[str, Any]) -> dict[str, Any]:
+    async def post_json(_: str, payload: dict[str, Any], headers: dict[str, str] | None = None) -> dict[str, Any]:
         nonlocal steps
 
         tool_call_id, tool_name, tool_args, customer_number, sip_number = _extract_tool_call(payload)
@@ -135,7 +121,7 @@ async def run_eval_scenario(scenario: EvalScenario, *, timeout_s: float = 2.0) -
             tool_call_id=tool_call_id,
             name=tool_name,
             arguments=tool_args,
-            call_id=str(payload["message"]["call"]["id"]),
+            call_id=str(payload["call"]["id"]),
             customer_number=customer_number,
             sip_number=sip_number,
         )
@@ -156,7 +142,7 @@ async def run_eval_scenario(scenario: EvalScenario, *, timeout_s: float = 2.0) -
             raise step.result
 
         result_obj = step.result(trace) if callable(step.result) else step.result
-        return {"results": [{"toolCallId": tool_call_id, "result": json.dumps(result_obj)}]}
+        return {"results": [{"tool_call_id": tool_call_id, "name": tool_name, "ok": True, "result": result_obj}]}
 
     # Import lazily so NUM_CPUS is set first.
     from livekit.agents import AgentSession, ChatContext  # noqa: WPS433
@@ -164,7 +150,7 @@ async def run_eval_scenario(scenario: EvalScenario, *, timeout_s: float = 2.0) -
     from livekit_agent.agent import VapiAdapterAgent  # noqa: WPS433
     from livekit_agent.backend_tools_client import BackendToolsClient  # noqa: WPS433
 
-    backend = BackendToolsClient(tools_url="https://example.test/vapi/tools", post_json=post_json)
+    backend = BackendToolsClient(tools_url="https://example.test/tools", post_json=post_json, tools_token="test-secret")
     agent = VapiAdapterAgent(
         backend_client=backend,
         call_id_fallback="eval-room",

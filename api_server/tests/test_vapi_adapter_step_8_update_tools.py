@@ -1,6 +1,6 @@
 """TDD Step 8: update_customer + update_service_order handlers."""
 
-import json
+import os
 
 from fastapi.testclient import TestClient
 
@@ -86,42 +86,38 @@ def test_update_customer_updates_fields_and_session_phone() -> None:
     )
 
     app.dependency_overrides[get_database_client] = lambda: fake_database_client
+    previous_token = os.environ.get("TOOLS_TOKEN")
     try:
         test_client = TestClient(app)
+        token = "test-secret"
+        os.environ["TOOLS_TOKEN"] = token
 
         vapi_tool_call_payload = {
-            "message": {
-                "type": "tool-calls",
-                "call": {"id": call_id},
-                "toolCallList": [
-                    {
-                        "id": "tool-call-update-customer-success",
-                        "function": {
-                            "name": "update_customer",
-                            "arguments": json.dumps(
-                                {
-                                    "customer_id": "CUST-1",
-                                    "updates": {
-                                        "first_name": "Robert",
-                                        "phone_number": "+15550002222",
-                                        "email_address": "rob@example.com",
-                                    },
-                                }
-                            ),
+            "call": {"id": call_id},
+            "tool_calls": [
+                {
+                    "id": "tool-call-update-customer-success",
+                    "name": "update_customer",
+                    "arguments": {
+                        "customer_id": "CUST-1",
+                        "updates": {
+                            "first_name": "Robert",
+                            "phone_number": "+15550002222",
+                            "email_address": "rob@example.com",
                         },
-                    }
-                ],
-                "assistant": {"extractedVariables": {}},
-            }
+                    },
+                }
+            ],
         }
 
         # Act
-        response = test_client.post("/vapi/tools", json=vapi_tool_call_payload)
+        response = test_client.post("/tools", json=vapi_tool_call_payload, headers={"X-TOOLS-TOKEN": token})
 
         # Assert
         assert response.status_code == 200
         response_data = response.json()
-        parsed_result = json.loads(response_data["results"][0]["result"])
+        assert response_data["results"][0]["ok"] is True
+        parsed_result = response_data["results"][0]["result"]
 
         assert parsed_result == {
             "success": True,
@@ -142,6 +138,10 @@ def test_update_customer_updates_fields_and_session_phone() -> None:
         ]
         assert session_store.get(call_id)["phone_number"] == "+15550002222"
     finally:
+        if previous_token is None:
+            os.environ.pop("TOOLS_TOKEN", None)
+        else:
+            os.environ["TOOLS_TOKEN"] = previous_token
         app.dependency_overrides.pop(get_database_client, None)
 
 
@@ -164,38 +164,34 @@ def test_update_customer_uses_phone_lookup_when_id_missing() -> None:
     )
 
     app.dependency_overrides[get_database_client] = lambda: fake_database_client
+    previous_token = os.environ.get("TOOLS_TOKEN")
     try:
         test_client = TestClient(app)
+        token = "test-secret"
+        os.environ["TOOLS_TOKEN"] = token
 
         vapi_tool_call_payload = {
-            "message": {
-                "type": "tool-calls",
-                "call": {"id": call_id},
-                "toolCallList": [
-                    {
-                        "id": "tool-call-update-customer-phone",
-                        "function": {
-                            "name": "update_customer",
-                            "arguments": json.dumps(
-                                {
-                                    "phone_number": "+15550003333",
-                                    "updates": {"last_name": "Smith"},
-                                }
-                            ),
-                        },
-                    }
-                ],
-                "assistant": {"extractedVariables": {}},
-            }
+            "call": {"id": call_id},
+            "tool_calls": [
+                {
+                    "id": "tool-call-update-customer-phone",
+                    "name": "update_customer",
+                    "arguments": {
+                        "phone_number": "+15550003333",
+                        "updates": {"last_name": "Smith"},
+                    },
+                }
+            ],
         }
 
         # Act
-        response = test_client.post("/vapi/tools", json=vapi_tool_call_payload)
+        response = test_client.post("/tools", json=vapi_tool_call_payload, headers={"X-TOOLS-TOKEN": token})
 
         # Assert
         assert response.status_code == 200
         response_data = response.json()
-        parsed_result = json.loads(response_data["results"][0]["result"])
+        assert response_data["results"][0]["ok"] is True
+        parsed_result = response_data["results"][0]["result"]
 
         assert parsed_result == {
             "success": True,
@@ -213,6 +209,10 @@ def test_update_customer_uses_phone_lookup_when_id_missing() -> None:
             )
         ]
     finally:
+        if previous_token is None:
+            os.environ.pop("TOOLS_TOKEN", None)
+        else:
+            os.environ["TOOLS_TOKEN"] = previous_token
         app.dependency_overrides.pop(get_database_client, None)
 
 
@@ -227,37 +227,33 @@ def test_update_customer_missing_identifier_returns_error() -> None:
     fake_database_client = FakeDatabaseClient()
 
     app.dependency_overrides[get_database_client] = lambda: fake_database_client
+    previous_token = os.environ.get("TOOLS_TOKEN")
     try:
         test_client = TestClient(app)
+        token = "test-secret"
+        os.environ["TOOLS_TOKEN"] = token
 
         vapi_tool_call_payload = {
-            "message": {
-                "type": "tool-calls",
-                "call": {"id": call_id},
-                "toolCallList": [
-                    {
-                        "id": "tool-call-update-customer-missing-id",
-                        "function": {
-                            "name": "update_customer",
-                            "arguments": json.dumps(
-                                {
-                                    "updates": {"email_address": "new@example.com"},
-                                }
-                            ),
-                        },
-                    }
-                ],
-                "assistant": {"extractedVariables": {}},
-            }
+            "call": {"id": call_id},
+            "tool_calls": [
+                {
+                    "id": "tool-call-update-customer-missing-id",
+                    "name": "update_customer",
+                    "arguments": {
+                        "updates": {"email_address": "new@example.com"},
+                    },
+                }
+            ],
         }
 
         # Act
-        response = test_client.post("/vapi/tools", json=vapi_tool_call_payload)
+        response = test_client.post("/tools", json=vapi_tool_call_payload, headers={"X-TOOLS-TOKEN": token})
 
         # Assert
         assert response.status_code == 200
         response_data = response.json()
-        parsed_result = json.loads(response_data["results"][0]["result"])
+        assert response_data["results"][0]["ok"] is True
+        parsed_result = response_data["results"][0]["result"]
 
         assert parsed_result == {
             "success": False,
@@ -265,6 +261,10 @@ def test_update_customer_missing_identifier_returns_error() -> None:
             "next_action": "Ask caller to confirm their phone number.",
         }
     finally:
+        if previous_token is None:
+            os.environ.pop("TOOLS_TOKEN", None)
+        else:
+            os.environ["TOOLS_TOKEN"] = previous_token
         app.dependency_overrides.pop(get_database_client, None)
 
 
@@ -295,40 +295,36 @@ def test_update_service_order_updates_session_service() -> None:
     fake_database_client = FakeDatabaseClient()
 
     app.dependency_overrides[get_database_client] = lambda: fake_database_client
+    previous_token = os.environ.get("TOOLS_TOKEN")
     try:
         test_client = TestClient(app)
+        token = "test-secret"
+        os.environ["TOOLS_TOKEN"] = token
 
         vapi_tool_call_payload = {
-            "message": {
-                "type": "tool-calls",
-                "call": {"id": call_id},
-                "toolCallList": [
-                    {
-                        "id": "tool-call-update-service-session",
-                        "function": {
-                            "name": "update_service_order",
-                            "arguments": json.dumps(
-                                {
-                                    "updates": {
-                                        "service_location": "456 Pine Avenue, Dallas",
-                                        "unit_nickname": "Big Green",
-                                    }
-                                }
-                            ),
-                        },
-                    }
-                ],
-                "assistant": {"extractedVariables": {}},
-            }
+            "call": {"id": call_id},
+            "tool_calls": [
+                {
+                    "id": "tool-call-update-service-session",
+                    "name": "update_service_order",
+                    "arguments": {
+                        "updates": {
+                            "service_location": "456 Pine Avenue, Dallas",
+                            "unit_nickname": "Big Green",
+                        }
+                    },
+                }
+            ],
         }
 
         # Act
-        response = test_client.post("/vapi/tools", json=vapi_tool_call_payload)
+        response = test_client.post("/tools", json=vapi_tool_call_payload, headers={"X-TOOLS-TOKEN": token})
 
         # Assert
         assert response.status_code == 200
         response_data = response.json()
-        parsed_result = json.loads(response_data["results"][0]["result"])
+        assert response_data["results"][0]["ok"] is True
+        parsed_result = response_data["results"][0]["result"]
 
         assert parsed_result == {
             "success": True,
@@ -345,6 +341,10 @@ def test_update_service_order_updates_session_service() -> None:
             "unit_nickname": "Big Green",
         }
     finally:
+        if previous_token is None:
+            os.environ.pop("TOOLS_TOKEN", None)
+        else:
+            os.environ["TOOLS_TOKEN"] = previous_token
         app.dependency_overrides.pop(get_database_client, None)
 
 
@@ -373,41 +373,37 @@ def test_update_service_order_updates_stored_order_with_unit_resolution() -> Non
     )
 
     app.dependency_overrides[get_database_client] = lambda: fake_database_client
+    previous_token = os.environ.get("TOOLS_TOKEN")
     try:
         test_client = TestClient(app)
+        token = "test-secret"
+        os.environ["TOOLS_TOKEN"] = token
 
         vapi_tool_call_payload = {
-            "message": {
-                "type": "tool-calls",
-                "call": {"id": "call-update-service-db"},
-                "toolCallList": [
-                    {
-                        "id": "tool-call-update-service-db",
-                        "function": {
-                            "name": "update_service_order",
-                            "arguments": json.dumps(
-                                {
-                                    "order_id": "ORD-1",
-                                    "updates": {
-                                        "unit_nickname": "Big Green",
-                                        "service_complaint": "Dead battery",
-                                    },
-                                }
-                            ),
+            "call": {"id": "call-update-service-db"},
+            "tool_calls": [
+                {
+                    "id": "tool-call-update-service-db",
+                    "name": "update_service_order",
+                    "arguments": {
+                        "order_id": "ORD-1",
+                        "updates": {
+                            "unit_nickname": "Big Green",
+                            "service_complaint": "Dead battery",
                         },
-                    }
-                ],
-                "assistant": {"extractedVariables": {}},
-            }
+                    },
+                }
+            ],
         }
 
         # Act
-        response = test_client.post("/vapi/tools", json=vapi_tool_call_payload)
+        response = test_client.post("/tools", json=vapi_tool_call_payload, headers={"X-TOOLS-TOKEN": token})
 
         # Assert
         assert response.status_code == 200
         response_data = response.json()
-        parsed_result = json.loads(response_data["results"][0]["result"])
+        assert response_data["results"][0]["ok"] is True
+        parsed_result = response_data["results"][0]["result"]
 
         assert parsed_result == {
             "success": True,
@@ -426,6 +422,10 @@ def test_update_service_order_updates_stored_order_with_unit_resolution() -> Non
             )
         ]
     finally:
+        if previous_token is None:
+            os.environ.pop("TOOLS_TOKEN", None)
+        else:
+            os.environ["TOOLS_TOKEN"] = previous_token
         app.dependency_overrides.pop(get_database_client, None)
 
 
@@ -440,37 +440,33 @@ def test_update_service_order_missing_session_services_returns_error() -> None:
     fake_database_client = FakeDatabaseClient()
 
     app.dependency_overrides[get_database_client] = lambda: fake_database_client
+    previous_token = os.environ.get("TOOLS_TOKEN")
     try:
         test_client = TestClient(app)
+        token = "test-secret"
+        os.environ["TOOLS_TOKEN"] = token
 
         vapi_tool_call_payload = {
-            "message": {
-                "type": "tool-calls",
-                "call": {"id": call_id},
-                "toolCallList": [
-                    {
-                        "id": "tool-call-update-service-missing",
-                        "function": {
-                            "name": "update_service_order",
-                            "arguments": json.dumps(
-                                {
-                                    "updates": {"service_location": "456 Pine Avenue, Dallas"},
-                                }
-                            ),
-                        },
-                    }
-                ],
-                "assistant": {"extractedVariables": {}},
-            }
+            "call": {"id": call_id},
+            "tool_calls": [
+                {
+                    "id": "tool-call-update-service-missing",
+                    "name": "update_service_order",
+                    "arguments": {
+                        "updates": {"service_location": "456 Pine Avenue, Dallas"},
+                    },
+                }
+            ],
         }
 
         # Act
-        response = test_client.post("/vapi/tools", json=vapi_tool_call_payload)
+        response = test_client.post("/tools", json=vapi_tool_call_payload, headers={"X-TOOLS-TOKEN": token})
 
         # Assert
         assert response.status_code == 200
         response_data = response.json()
-        parsed_result = json.loads(response_data["results"][0]["result"])
+        assert response_data["results"][0]["ok"] is True
+        parsed_result = response_data["results"][0]["result"]
 
         assert parsed_result == {
             "success": False,
@@ -478,4 +474,8 @@ def test_update_service_order_missing_session_services_returns_error() -> None:
             "next_action": "No service has been added yet. Collect service details first.",
         }
     finally:
+        if previous_token is None:
+            os.environ.pop("TOOLS_TOKEN", None)
+        else:
+            os.environ["TOOLS_TOKEN"] = previous_token
         app.dependency_overrides.pop(get_database_client, None)

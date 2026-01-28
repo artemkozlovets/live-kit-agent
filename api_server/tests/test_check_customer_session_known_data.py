@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 from fastapi.testclient import TestClient
 
@@ -18,29 +19,25 @@ class FakeDatabaseClient:
 def _post_check_customer_tool_call(*, call_id: str, arguments: dict) -> dict:
     from api_server.server.fastapi_app import app
 
+    os.environ.setdefault("TOOLS_TOKEN", "test-secret")
+
     app.dependency_overrides[get_database_client] = lambda: FakeDatabaseClient()
     try:
         client = TestClient(app)
         payload = {
-            "message": {
-                "type": "tool-calls",
-                "call": {"id": call_id},
-                "toolCallList": [
-                    {
-                        "id": "tool-call-check-customer",
-                        "function": {
-                            "name": "check_customer",
-                            "arguments": json.dumps(arguments),
-                        },
-                    }
-                ],
-                "assistant": {"extractedVariables": {}},
-            }
+            "call": {"id": call_id},
+            "tool_calls": [
+                {
+                    "id": "tool-call-check-customer",
+                    "name": "check_customer",
+                    "arguments": arguments,
+                }
+            ],
         }
-        response = client.post("/vapi/tools", json=payload)
+        response = client.post("/tools", json=payload, headers={"X-TOOLS-TOKEN": "test-secret"})
         assert response.status_code == 200
         response_data = response.json()
-        return json.loads(response_data["results"][0]["result"])
+        return response_data["results"][0]["result"]
     finally:
         app.dependency_overrides.pop(get_database_client, None)
 
@@ -131,4 +128,3 @@ def test_check_customer_session_known_data_ignores_non_strings() -> None:
         "state",
         "postalCode",
     ]
-

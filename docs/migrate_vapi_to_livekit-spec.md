@@ -1,7 +1,8 @@
 # Feature Spec: Migrate Vapi to LiveKit
 
 > Created: 2026-01-22
-> Status: 🟡 Ready for Review
+> Status: 🔴 Deprecated (2026-01-28)
+> Deprecated note: this spec assumed `POST /vapi/tools`. This repo has now cut over to `POST /tools` (v2) and removed `POST /vapi/tools` (404). See `docs/specs/openai_realtime-spec.md` and `docs/openai_realtime-tdd-plan.md` instead.
 > Previous Vapi repo (for confirmation): `/Users/tom-long/jobs/dev_branch_tmp/Call-agent-squad`
 
 ---

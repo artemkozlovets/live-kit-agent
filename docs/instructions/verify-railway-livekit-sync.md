@@ -1,11 +1,11 @@
 # Verify Railway ↔ LiveKit Sync
 
-Last updated: 2026-01-25
+Last updated: 2026-01-28
 
 ## Big picture
 This repo runs as **two deployed services**:
 - **LiveKit Cloud Agent** (managed by `lk`): runs the voice worker.
-- **Railway backend** (managed by `railway`): serves the tools API the agent calls (`POST /vapi/tools`), plus a health check (`GET /health`).
+- **Railway backend** (managed by `railway`): serves the tools API the agent calls (`POST /tools` + `X-TOOLS-TOKEN` auth), plus a health check (`GET /health`).
 
 When we say “Railway and LiveKit are in sync”, we usually mean:
 1) Railway is reachable + healthy,  
@@ -54,6 +54,7 @@ lk agent secrets
 ```
 
 You should see `BACKEND_TOOLS_URL` listed in `lk agent secrets`.
+You should also see `TOOLS_TOKEN` (required for `POST /tools` auth).
 
 Note: the CLI does not print secret *values*; it only lists secret names.
 
@@ -62,7 +63,7 @@ Trigger any real run (dispatch a room / place a test call), then check:
 
 Railway logs (small, filter first):
 ```bash
-railway logs --service "Call-agent" --environment development --lines 200 --filter "/vapi/tools"
+railway logs --service "Call-agent" --environment development --lines 200 --filter "/tools"
 railway logs --service "Call-agent" --environment development --lines 200 --filter "@level:error"
 ```
 

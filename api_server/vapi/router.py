@@ -84,7 +84,7 @@ async def handle_vapi_tool_calls(
     try:
         request_payload = await request.json()
     except Exception as exc:
-        logger.warning("Invalid JSON body for /vapi/tools", exc_info=exc)
+        logger.warning("Invalid JSON body for tools endpoint", exc_info=exc)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload") from exc
 
     if not isinstance(request_payload, dict):

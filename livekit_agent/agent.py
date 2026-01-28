@@ -20,7 +20,13 @@ from livekit.agents.types import APIConnectOptions
 from livekit.agents.voice.events import CloseEvent, ErrorEvent
 from livekit.plugins import cartesia, deepgram, google, silero
 
-from livekit_agent.backend_tools_client import BackendToolsClient, BackendToolsClientError
+from livekit_agent.backend_tools_client import (
+    BackendToolsClient,
+    BackendToolsClientError,
+    BackendToolsResponseError,
+    BackendToolsTransportError,
+    BookingNotConfirmedError,
+)
 from livekit_agent.flow_controller import Action, FlowController, Phase, SpeakAction, ToolAction
 from livekit_agent.session_report_publisher import SessionReportPublisher
 from livekit_agent.tools import load_tool_schemas
@@ -651,12 +657,41 @@ class VapiAdapterAgent(Agent):
 
     async def _finalize_booking(self) -> None:
         self._awaiting_final_confirmation = False
+
+        try:
+            confirm_result = await self._call_backend_tool(
+                tool_call_id=f"tool-{uuid.uuid4().hex}",
+                tool_name="confirm_services",
+                tool_arguments={},
+            )
+        except BackendToolsTransportError:
+            await self._speak_backend_unreachable_once()
+            return
+        except BackendToolsResponseError:
+            # Reason: Confirmation failures are usually a missing/invalid session prerequisite (customer_id),
+            # not a transport outage.
+            self.session.say("I couldn't confirm that yet — let's double-check your details.")
+            return
+
+        if confirm_result.get("confirmed") is not True:
+            self.session.say("I couldn't confirm that yet — let's double-check your details.")
+            return
+
         try:
             store_result = await self._call_backend_tool(
                 tool_call_id=f"tool-{uuid.uuid4().hex}",
                 tool_name="store_service_order",
                 tool_arguments={},
             )
+        except BookingNotConfirmedError:
+            # Reason: Booking must be explicitly confirmed and the backend is the source of truth.
+            summary = await self._get_session_summary()
+            prompt = "Just to confirm, is that correct?"
+            if summary is not None:
+                prompt = self._build_final_confirmation_prompt(summary)
+            self._awaiting_final_confirmation = True
+            self.session.say(prompt)
+            return
         except BackendToolsClientError:
             await self._speak_backend_unreachable_once()
             return
@@ -983,7 +1018,7 @@ class VapiAdapterAgent(Agent):
 
 server = _build_server()
 
-DEFAULT_BACKEND_TOOLS_URL = "https://call-agent-development.up.railway.app/vapi/tools"
+DEFAULT_BACKEND_TOOLS_URL = "https://call-agent-development.up.railway.app/tools"
 
 
 async def _on_session_end(ctx: JobContext) -> None:
@@ -1015,48 +1050,51 @@ async def entrypoint(ctx: JobContext) -> None:
     ctx.log_context_fields = {"room": ctx.room.name}
 
     backend_tools_url = os.getenv("BACKEND_TOOLS_URL", DEFAULT_BACKEND_TOOLS_URL)
+    agent_engine = os.getenv("AGENT_ENGINE", "openai_realtime").strip().lower() or "openai_realtime"
 
-    llm_model = os.getenv("GOOGLE_LLM_MODEL", "gemini-2.5-flash")
-    tool_llm = google.LLM(model=llm_model) if os.getenv("GOOGLE_API_KEY") else None
-    tool_llm_timeout_s = _float_env("GOOGLE_LLM_TIMEOUT_S") or 15.0
-    tool_llm_max_retry = _int_env("GOOGLE_LLM_MAX_RETRY") or 3
-    tool_llm_retry_interval_s = _float_env("GOOGLE_LLM_RETRY_INTERVAL_S") or 2.0
+    if agent_engine in {"legacy", "vapi_adapter"}:
+        llm_model = os.getenv("GOOGLE_LLM_MODEL", "gemini-2.5-flash")
+        tool_llm = google.LLM(model=llm_model) if os.getenv("GOOGLE_API_KEY") else None
+        tool_llm_timeout_s = _float_env("GOOGLE_LLM_TIMEOUT_S") or 15.0
+        tool_llm_max_retry = _int_env("GOOGLE_LLM_MAX_RETRY") or 3
+        tool_llm_retry_interval_s = _float_env("GOOGLE_LLM_RETRY_INTERVAL_S") or 2.0
 
-    stt_model = os.getenv("DEEPGRAM_STT_MODEL", "flux-general-en")
-    eager_eot_threshold_raw = os.getenv("DEEPGRAM_EAGER_EOT_THRESHOLD", "0.4")
-    try:
-        eager_eot_threshold = float(eager_eot_threshold_raw)
-    except ValueError:
-        eager_eot_threshold = 0.4
-        logger.warning(
-            "Invalid DEEPGRAM_EAGER_EOT_THRESHOLD=%r (expected float); using default=%s",
-            eager_eot_threshold_raw,
-            eager_eot_threshold,
-        )
-    else:
-        # Reason: Deepgram rejects values outside this range with a 400, which makes the agent go silent.
-        if eager_eot_threshold < 0.3 or eager_eot_threshold > 0.9:
+        stt_model = os.getenv("DEEPGRAM_STT_MODEL", "flux-general-en")
+        eager_eot_threshold_raw = os.getenv("DEEPGRAM_EAGER_EOT_THRESHOLD", "0.4")
+        try:
+            eager_eot_threshold = float(eager_eot_threshold_raw)
+        except ValueError:
+            eager_eot_threshold = 0.4
             logger.warning(
-                "Invalid DEEPGRAM_EAGER_EOT_THRESHOLD=%s (expected 0.3-0.9); clamping",
+                "Invalid DEEPGRAM_EAGER_EOT_THRESHOLD=%r (expected float); using default=%s",
+                eager_eot_threshold_raw,
                 eager_eot_threshold,
             )
-            eager_eot_threshold = min(max(eager_eot_threshold, 0.3), 0.9)
-    tts_model = os.getenv("CARTESIA_TTS_MODEL", "sonic-3")
-    tts_voice = os.getenv("CARTESIA_VOICE_ID", "794f9389-aac1-45b6-b726-9d9369183238")
-    tts_speed_raw = os.getenv("CARTESIA_SPEED", "").strip()
-    tts_speed: float | None = None
-    if tts_speed_raw:
-        try:
-            tts_speed = float(tts_speed_raw)
-        except ValueError:
-            logger.warning("Invalid CARTESIA_SPEED=%r (expected float); ignoring", tts_speed_raw)
+        else:
+            # Reason: Deepgram rejects values outside this range with a 400, which makes the agent go silent.
+            if eager_eot_threshold < 0.3 or eager_eot_threshold > 0.9:
+                logger.warning(
+                    "Invalid DEEPGRAM_EAGER_EOT_THRESHOLD=%s (expected 0.3-0.9); clamping",
+                    eager_eot_threshold,
+                )
+                eager_eot_threshold = min(max(eager_eot_threshold, 0.3), 0.9)
+        tts_model = os.getenv("CARTESIA_TTS_MODEL", "sonic-3")
+        tts_voice = os.getenv("CARTESIA_VOICE_ID", "794f9389-aac1-45b6-b726-9d9369183238")
+        tts_speed_raw = os.getenv("CARTESIA_SPEED", "").strip()
+        tts_speed: float | None = None
+        if tts_speed_raw:
+            try:
+                tts_speed = float(tts_speed_raw)
+            except ValueError:
+                logger.warning("Invalid CARTESIA_SPEED=%r (expected float); ignoring", tts_speed_raw)
 
-    text_pacing_raw = os.getenv("CARTESIA_TEXT_PACING", "").strip().lower()
-    text_pacing = text_pacing_raw in {"1", "true", "yes", "y", "on"}
+        text_pacing_raw = os.getenv("CARTESIA_TEXT_PACING", "").strip().lower()
+        text_pacing = text_pacing_raw in {"1", "true", "yes", "y", "on"}
 
-    logger.info(
+        logger.info(
             "starting agent session",
             extra={
+                "agent_engine": agent_engine,
                 "backend_tools_url": backend_tools_url,
                 "tool_llm_enabled": bool(tool_llm),
                 "tool_llm_model": llm_model if tool_llm else None,
@@ -1067,21 +1105,49 @@ async def entrypoint(ctx: JobContext) -> None:
                 "eager_eot_threshold": eager_eot_threshold,
                 "tts_model": tts_model,
                 "tts_voice": tts_voice,
-            "tts_speed": tts_speed,
-            "tts_text_pacing": text_pacing,
-            "has_deepgram_api_key": bool(os.getenv("DEEPGRAM_API_KEY")),
-            "has_cartesia_api_key": bool(os.getenv("CARTESIA_API_KEY")),
-            "has_google_api_key": bool(os.getenv("GOOGLE_API_KEY")),
-        },
-    )
+                "tts_speed": tts_speed,
+                "tts_text_pacing": text_pacing,
+                "has_deepgram_api_key": bool(os.getenv("DEEPGRAM_API_KEY")),
+                "has_cartesia_api_key": bool(os.getenv("CARTESIA_API_KEY")),
+                "has_google_api_key": bool(os.getenv("GOOGLE_API_KEY")),
+            },
+        )
 
-    session = AgentSession(
-        # Use Deepgram's STT-based endpointing (closest parity with Vapi's current settings).
-        turn_detection="stt",
-        stt=deepgram.STTv2(model=stt_model, eager_eot_threshold=eager_eot_threshold),
-        tts=cartesia.TTS(model=tts_model, voice=tts_voice, speed=tts_speed, text_pacing=text_pacing),
-        vad=ctx.proc.userdata["vad"],
-    )
+        session = AgentSession(
+            # Use Deepgram's STT-based endpointing (closest parity with Vapi's current settings).
+            turn_detection="stt",
+            stt=deepgram.STTv2(model=stt_model, eager_eot_threshold=eager_eot_threshold),
+            tts=cartesia.TTS(model=tts_model, voice=tts_voice, speed=tts_speed, text_pacing=text_pacing),
+            vad=ctx.proc.userdata["vad"],
+        )
+
+        agent: Agent = VapiAdapterAgent(
+            backend_client=BackendToolsClient(tools_url=backend_tools_url),
+            call_id_fallback=ctx.room.name,
+            tool_llm=tool_llm,
+        )
+    else:
+        # Default: OpenAI Realtime conversation engine (cutover path).
+        from livekit_agent.openai_realtime_agent import OpenAIRealtimeAgent  # noqa: WPS433
+        from livekit_agent.openai_realtime_session import build_openai_realtime_session  # noqa: WPS433
+
+        voice = os.getenv("OPENAI_REALTIME_VOICE", "").strip() or None
+
+        logger.info(
+            "starting agent session",
+            extra={
+                "agent_engine": agent_engine,
+                "backend_tools_url": backend_tools_url,
+                "openai_realtime_voice": voice,
+                "has_openai_api_key": bool(os.getenv("OPENAI_API_KEY")),
+            },
+        )
+
+        session = build_openai_realtime_session(voice=voice)
+        agent = OpenAIRealtimeAgent(
+            backend_client=BackendToolsClient(tools_url=backend_tools_url),
+            call_id_fallback=ctx.room.name,
+        )
 
     @session.on("error")
     def _on_session_error(ev: ErrorEvent) -> None:
@@ -1140,12 +1206,6 @@ async def entrypoint(ctx: JobContext) -> None:
                 "error": close_error_dump,
             },
         )
-
-    agent = VapiAdapterAgent(
-        backend_client=BackendToolsClient(tools_url=backend_tools_url),
-        call_id_fallback=ctx.room.name,
-        tool_llm=tool_llm,
-    )
 
     try:
         await session.start(agent=agent, room=ctx.room)

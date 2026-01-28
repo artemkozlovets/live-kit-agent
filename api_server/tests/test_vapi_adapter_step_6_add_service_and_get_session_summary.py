@@ -6,9 +6,30 @@ Behaviors:
 - get_session_summary returns service_count and services list
 """
 
-import json
+import os
 
 from fastapi.testclient import TestClient
+
+
+def _post_tool(*, test_client: TestClient, call_id: str, tool_call_id: str, name: str, arguments: dict) -> dict:
+    token = "test-secret"
+    previous_token = os.environ.get("TOOLS_TOKEN")
+    os.environ["TOOLS_TOKEN"] = token
+    payload = {
+        "call": {"id": call_id},
+        "tool_calls": [{"id": tool_call_id, "name": name, "arguments": arguments}],
+    }
+    try:
+        response = test_client.post("/tools", json=payload, headers={"X-TOOLS-TOKEN": token})
+        assert response.status_code == 200
+        response_data = response.json()
+        assert response_data["results"][0]["ok"] is True
+        return response_data["results"][0]["result"]
+    finally:
+        if previous_token is None:
+            os.environ.pop("TOOLS_TOKEN", None)
+        else:
+            os.environ["TOOLS_TOKEN"] = previous_token
 
 
 def test_add_service_requires_vehicle_identifier() -> None:
@@ -21,35 +42,17 @@ def test_add_service_requires_vehicle_identifier() -> None:
 
     test_client = TestClient(app)
 
-    vapi_tool_call_payload = {
-        "message": {
-            "type": "tool-calls",
-            "call": {"id": call_id},
-            "toolCallList": [
-                {
-                    "id": "tool-call-add-service-missing-vehicle-id",
-                    "function": {
-                        "name": "add_service",
-                        "arguments": json.dumps(
-                            {
-                                "service_complaint": "Oil change",
-                                "service_location": "Denver CO",
-                            }
-                        ),
-                    },
-                }
-            ],
-            "assistant": {"extractedVariables": {}},
-        }
-    }
-
     # Act
-    response = test_client.post("/vapi/tools", json=vapi_tool_call_payload)
-
-    # Assert
-    assert response.status_code == 200
-    response_data = response.json()
-    parsed_result = json.loads(response_data["results"][0]["result"])
+    parsed_result = _post_tool(
+        test_client=test_client,
+        call_id=call_id,
+        tool_call_id="tool-call-add-service-missing-vehicle-id",
+        name="add_service",
+        arguments={
+            "service_complaint": "Oil change",
+            "service_location": "Denver CO",
+        },
+    )
 
     assert parsed_result["added"] is False
     assert "error" in parsed_result
@@ -77,36 +80,18 @@ def test_add_service_caps_at_five_services() -> None:
 
     test_client = TestClient(app)
 
-    vapi_tool_call_payload = {
-        "message": {
-            "type": "tool-calls",
-            "call": {"id": call_id},
-            "toolCallList": [
-                {
-                    "id": "tool-call-add-service-6",
-                    "function": {
-                        "name": "add_service",
-                        "arguments": json.dumps(
-                            {
-                                "unit_number": "UNIT-6",
-                                "service_complaint": "Tire rotation",
-                                "service_location": "Denver CO",
-                            }
-                        ),
-                    },
-                }
-            ],
-            "assistant": {"extractedVariables": {}},
-        }
-    }
-
     # Act
-    response = test_client.post("/vapi/tools", json=vapi_tool_call_payload)
-
-    # Assert
-    assert response.status_code == 200
-    response_data = response.json()
-    parsed_result = json.loads(response_data["results"][0]["result"])
+    parsed_result = _post_tool(
+        test_client=test_client,
+        call_id=call_id,
+        tool_call_id="tool-call-add-service-6",
+        name="add_service",
+        arguments={
+            "unit_number": "UNIT-6",
+            "service_complaint": "Tire rotation",
+            "service_location": "Denver CO",
+        },
+    )
 
     assert parsed_result == {
         "added": False,
@@ -141,31 +126,14 @@ def test_get_session_summary_returns_services() -> None:
 
     test_client = TestClient(app)
 
-    vapi_tool_call_payload = {
-        "message": {
-            "type": "tool-calls",
-            "call": {"id": call_id},
-            "toolCallList": [
-                {
-                    "id": "tool-call-get-session-summary",
-                    "function": {
-                        "name": "get_session_summary",
-                        "arguments": json.dumps({}),
-                    },
-                }
-            ],
-            "assistant": {"extractedVariables": {}},
-        }
-    }
-
     # Act
-    response = test_client.post("/vapi/tools", json=vapi_tool_call_payload)
-
-    # Assert
-    assert response.status_code == 200
-    response_data = response.json()
-    parsed_result = json.loads(response_data["results"][0]["result"])
+    parsed_result = _post_tool(
+        test_client=test_client,
+        call_id=call_id,
+        tool_call_id="tool-call-get-session-summary",
+        name="get_session_summary",
+        arguments={},
+    )
 
     assert parsed_result["service_count"] == 2
     assert len(parsed_result["services"]) == 2
-

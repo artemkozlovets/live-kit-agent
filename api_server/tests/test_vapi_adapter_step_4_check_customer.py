@@ -1,6 +1,6 @@
 """TDD Step 4: check_customer tool stores customer_id in session."""
 
-import json
+import os
 
 from fastapi.testclient import TestClient
 
@@ -39,31 +39,29 @@ def test_check_customer_found_stores_customer_id_in_session_store() -> None:
     app.dependency_overrides[get_database_client] = lambda: fake_database_client
     try:
         test_client = TestClient(app)
+        token = "test-secret"
+        previous_token = os.environ.get("TOOLS_TOKEN")
+        os.environ["TOOLS_TOKEN"] = token
 
         vapi_tool_call_payload = {
-            "message": {
-                "type": "tool-calls",
-                "call": {"id": call_id},
-                "toolCallList": [
-                    {
-                        "id": "tool-call-check-customer-found",
-                        "function": {
-                            "name": "check_customer",
-                            "arguments": json.dumps({"phone_number": "+15551234567"}),
-                        },
-                    }
-                ],
-                "assistant": {"extractedVariables": {}},
-            }
+            "call": {"id": call_id},
+            "tool_calls": [
+                {
+                    "id": "tool-call-check-customer-found",
+                    "name": "check_customer",
+                    "arguments": {"phone_number": "+15551234567"},
+                }
+            ],
         }
 
         # Act
-        response = test_client.post("/vapi/tools", json=vapi_tool_call_payload)
+        response = test_client.post("/tools", json=vapi_tool_call_payload, headers={"X-TOOLS-TOKEN": token})
 
         # Assert
         assert response.status_code == 200
         response_data = response.json()
-        parsed_result = json.loads(response_data["results"][0]["result"])
+        assert response_data["results"][0]["ok"] is True
+        parsed_result = response_data["results"][0]["result"]
 
         assert parsed_result == {
             "found": True,
@@ -78,5 +76,8 @@ def test_check_customer_found_stores_customer_id_in_session_store() -> None:
         stored_session = session_store.get(call_id)
         assert stored_session["customer_id"] == "CUST-123"
     finally:
+        if previous_token is None:
+            os.environ.pop("TOOLS_TOKEN", None)
+        else:
+            os.environ["TOOLS_TOKEN"] = previous_token
         app.dependency_overrides.pop(get_database_client, None)
-

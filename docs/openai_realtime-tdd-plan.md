@@ -2,7 +2,7 @@
 
 > Based on: `docs/specs/openai_realtime-spec.md`
 > Created: 2026-01-27
-> Last Updated: 2026-01-27
+> Last Updated: 2026-01-28
 
 ---
 
@@ -22,13 +22,13 @@ This plan moves the voice/dialogue layer to **OpenAI Realtime** (better turn-tak
 ## Success criteria (definition of done)
 
 ### Must-have (from the spec)
-- [ ] **Backend** exposes `POST /tools` that accepts the v2 request and returns the v2 response shape.
-- [ ] **Auth** required for `POST /tools` (shared secret header `X-TOOLS-TOKEN`).
-- [ ] **Agent** uses OpenAI Realtime as the default conversation engine.
-- [ ] Calls complete end-to-end without `DEEPGRAM_API_KEY`, `CARTESIA_API_KEY`, or `GOOGLE_API_KEY`/`GEMINI_API_KEY` set.
-- [ ] Slot-filling guardrails still hold: **info dump → fill session → ask only missing → confirm at end → book**.
-- [ ] Backend enforces **no booking without explicit confirmation**.
-- [ ] Legacy `POST /vapi/tools` is removed (404) after cutover and `/vapi/*` references are cleaned up.
+- [x] **Backend** exposes `POST /tools` that accepts the v2 request and returns the v2 response shape.
+- [x] **Auth** required for `POST /tools` (shared secret header `X-TOOLS-TOKEN`).
+- [x] **Agent** uses OpenAI Realtime as the default conversation engine.
+- [x] Calls complete end-to-end without `DEEPGRAM_API_KEY`, `CARTESIA_API_KEY`, or `GOOGLE_API_KEY`/`GEMINI_API_KEY` set.
+- [x] Slot-filling guardrails still hold: **info dump → fill session → ask only missing → confirm at end → book**.
+- [x] Backend enforces **no booking without explicit confirmation**.
+- [x] Legacy `POST /vapi/tools` is removed (404) after cutover and `/vapi/*` references are cleaned up.
 
 ---
 
@@ -403,3 +403,63 @@ def build_tools_v2_request(
 - Add a single agent env flag (kill switch) to:
   - disable answering calls, or
   - fall back to the previous stack while investigating
+  - Implemented: `AGENT_ENGINE=legacy` uses the previous Deepgram+Cartesia pipeline (default is `openai_realtime`).
+
+---
+
+## TDD Execution Log
+
+- ✅ 0.1 (2026-01-27T23:34:06Z) `.venv/bin/python -m pytest -q api_server/tests -k test_tools_v2_missing_token_returns_401`
+  - Decision: Added a new `POST /tools` surface with a strict `X-TOOLS-TOKEN` auth gate (env `TOOLS_TOKEN`) before implementing any dispatch logic.
+- ✅ 0.1b (2026-01-27T23:34:06Z) `.venv/bin/python -m pytest -q api_server/tests -k test_tools_v2_invalid_token_returns_401`
+  - Decision: Treat missing/invalid tokens identically (`401 Unauthorized`) to avoid leaking auth details.
+- ✅ 0.2 (2026-01-27T23:34:06Z) `.venv/bin/python -m pytest -q api_server/tests -k test_tools_v2_valid_token_dispatches_validate_phone`
+  - Decision: Reused existing `api_server.vapi.dispatcher.dispatch_tool_call` with a v1-compatible `message_payload` shim so we can cut over without rewriting all handlers.
+- ✅ 0.3 (2026-01-27T23:34:06Z) `.venv/bin/python -m pytest -q api_server/tests -k test_tools_v2_invalid_payload_returns_400`
+  - Decision: Implemented explicit request-shape validation in the router to return `400` (not FastAPI’s default `422`) for bad agent↔backend payloads.
+- ✅ 1.1 (2026-01-27T23:34:06Z) `.venv/bin/python -m pytest -q api_server/tests -k test_tools_v2_multiple_tool_calls_return_multiple_correlated_results`
+  - Decision: Kept v2 result correlation purely by `tool_call_id` to make tool batching deterministic.
+- ✅ 1.2 (2026-01-27T23:34:06Z) `.venv/bin/python -m pytest -q api_server/tests -k test_tools_v2_unknown_tool_returns_ok_false_with_error`
+  - Decision: Unknown tool names are treated as per-tool failures (`HTTP 200`, `ok=false`) to match the v2 contract.
+- ✅ 1.3 (2026-01-27T23:34:06Z) `.venv/bin/python -m pytest -q api_server/tests -k test_tools_v2_variable_values_map_into_existing_override_path`
+  - Decision: Mapped v2 `assistant.variable_values` into internal `assistantOverrides.variableValues` so existing known-customer overrides remain unchanged.
+- ✅ 2.1 (2026-01-27T23:34:06Z) `.venv/bin/python -m pytest -q api_server/tests -k test_tools_v2_get_case_status_does_not_call_gemini`
+  - Decision: Added an explicit `/tools` “realtime mode” in `get_case_status` that forces non-network (heuristic + fast extractor) behavior.
+- ✅ 2.2 (2026-01-27T23:34:06Z) `.venv/bin/python -m pytest -q api_server/tests -k test_tools_v2_get_case_status_fast_path_extracts_fields`
+  - Decision: Enabled slot-filling + fast extraction by default for `/tools` so “info dump” turns actually populate session state without Gemini.
+- ✅ 2.3 (2026-01-27T23:34:06Z) `.venv/bin/python -m pytest -q api_server/tests -k test_tools_v2_gemini_env_flags_do_not_reenable_network_calls`
+  - Decision: `/tools` ignores all `GET_CASE_STATUS_GEMINI_*` env flags to prevent accidental network reintroduction.
+- ✅ 3.1 (2026-01-27T23:34:06Z) `.venv/bin/python -m pytest -q api_server/tests -k test_tools_v2_store_service_order_requires_explicit_confirmation`
+  - Decision: Enforced booking confirmation at the `/tools` boundary to guarantee “fail fast before DB writes” without impacting the legacy `/vapi/tools` path during the transition.
+- ✅ 3.2 (2026-01-27T23:34:06Z) `.venv/bin/python -m pytest -q api_server/tests -k test_tools_v2_confirm_services_then_store_service_order_succeeds`
+  - Decision: Allowed multi-tool batching in a single `/tools` request; sequential dispatch means `confirm_services` can unlock `store_service_order` in the same call.
+- ✅ 3.3 (2026-01-27T23:34:06Z) `.venv/bin/python -m pytest -q api_server/tests -k test_tools_v2_confirm_services_requires_customer_id`
+  - Decision: Kept guardrails in the tool layer (confirm requires customer_id) and surfaced them as v2 `ok=false` errors.
+- ✅ 4.1 (2026-01-27T23:34:06Z) `.venv/bin/python -m pytest -q livekit_agent/tests -k test_backend_tools_client_v2_sends_v2_payload_and_auth_header`
+  - Decision: Added a v2 mode to `BackendToolsClient` that builds provider-agnostic `/tools` payloads and sends `X-TOOLS-TOKEN` (read from `TOOLS_TOKEN` by default).
+- ✅ 4.2 (2026-01-27T23:34:06Z) `.venv/bin/python -m pytest -q livekit_agent/tests -k test_backend_tools_client_v2_matches_results_by_tool_call_id`
+  - Decision: Matched tool results strictly by `tool_call_id` so batching is safe even when tools return out of order.
+- ✅ 4.3 (2026-01-27T23:34:06Z) `.venv/bin/python -m pytest -q livekit_agent/tests -k test_backend_tools_client_v2_maps_booking_not_confirmed`
+  - Decision: Mapped `booking_not_confirmed` into a dedicated exception (`BookingNotConfirmedError`) so the agent can branch without string parsing.
+- ✅ 5.1 (2026-01-27T23:34:06Z) `.venv/bin/python -m pytest -q livekit_agent/tests -k test_openai_realtime_agent_calls_get_case_status_before_generate_reply`
+  - Decision: Implemented an explicit “pre-turn hook” that injects backend `case_status` into `ChatContext` before calling `session.generate_reply`.
+- ✅ 5.2 (2026-01-27T23:34:06Z) `.venv/bin/python -m pytest -q livekit_agent/tests -k test_openai_realtime_agent_tool_forwarding_preserves_parent_structure`
+  - Decision: Tool forwarding uses `BackendToolsClient(use_tools_v2=True)` so raw/confirmed phone numbers and `assistant.variable_values` flow into the v2 payload unchanged.
+- ✅ 5.3 (2026-01-27T23:34:06Z) `.venv/bin/python -m pytest -q livekit_agent/tests -k test_openai_realtime_agent_backend_down_speaks_one_fallback`
+  - Decision: Backend transport failures trigger a single short fallback and then hard-stop the agent to prevent repeated tool spam.
+- ✅ 5.4 (2026-01-27T23:34:06Z) `.venv/bin/python -m pytest -q livekit_agent/tests -k test_openai_realtime_session_does_not_require_legacy_vendor_keys`
+  - Decision: Added a small OpenAI Realtime session factory that does not reference Deepgram/Cartesia/Gemini env vars (plugin import is lazy).
+- ✅ 6.1 (2026-01-27T23:34:06Z) `.venv/bin/python -m pytest -q livekit_agent/tests -k test_agent_slot_filling_v2_info_dump_to_booking_requires_confirm_then_store`
+  - Decision: When using `/tools` (v2), the slot-filling flow explicitly calls `confirm_services` before `store_service_order` to satisfy backend booking enforcement.
+- ✅ 6.2 (2026-01-27T23:34:06Z) `.venv/bin/python -m pytest -q livekit_agent/tests -k test_agent_slot_filling_v2_decline_confirmation_does_not_book`
+  - Decision: A “no” at the final confirmation prompt blocks booking and shifts the agent into correction mode (no store attempt).
+- ✅ 6.3 (2026-01-27T23:34:06Z) `.venv/bin/python -m pytest -q livekit_agent/tests -k test_agent_slot_filling_v2_booking_not_confirmed_prompts_again`
+  - Decision: If the backend returns `booking_not_confirmed`, the agent safely re-prompts for explicit confirmation instead of retrying bookings automatically.
+- ✅ 7.1 (2026-01-28T00:17:13Z) `.venv/bin/python -m pytest -q api_server/tests -k test_vapi_tools_removed_returns_404`
+  - Decision: Removed the legacy external surface (`POST /vapi/tools`) so only the provider-agnostic `/tools` endpoint remains.
+- ✅ 7.2 (2026-01-28T00:21:46Z) `.venv/bin/python -m pytest -q api_server/tests -k test_repo_contains_no_vapi_path_references`
+  - Decision: Added a repo-wide guard test to prevent reintroducing hardcoded `/vapi/` URL paths after the cutover to `/tools`.
+- ✅ 7.3 (2026-01-28T00:57:42Z) `./scripts/test_all.sh`
+  - Decision: Removed the legacy agent-side Vapi payload builder and made `BackendToolsClient` v2-only; `AGENT_ENGINE` is the explicit rollback lever.
+- ✅ Docs (2026-01-28T01:14:43Z) `./scripts/test_all.sh`
+  - Decision: Updated repo docs to reflect `/tools` v2 + `X-TOOLS-TOKEN` auth, OpenAI Realtime default (`AGENT_ENGINE=openai_realtime`), and marked legacy Vapi migration docs as deprecated; also updated log filtering guidance to use `/tools`.

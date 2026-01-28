@@ -9,6 +9,7 @@ Big picture:
 from __future__ import annotations
 
 import json
+import os
 
 from fastapi.testclient import TestClient
 
@@ -21,41 +22,34 @@ class FakeDatabaseClient:
 
 
 def _post_get_case_status(*, client: TestClient, call_id: str, last_user_message: str) -> dict:
+    os.environ.setdefault("TOOLS_TOKEN", "test-secret")
+
     payload = {
-        "message": {
-            "type": "tool-calls",
-            "call": {"id": call_id},
-            "toolCallList": [
-                {
-                    "id": "tool-call-get-case-status",
-                    "function": {
-                        "name": "get_case_status",
-                        "arguments": json.dumps({"call_id": call_id, "last_user_message": last_user_message}),
-                    },
-                }
-            ],
-            "assistant": {"extractedVariables": {}},
-        }
+        "call": {"id": call_id},
+        "tool_calls": [
+            {
+                "id": "tool-call-get-case-status",
+                "name": "get_case_status",
+                "arguments": {"last_user_message": last_user_message, "expected_field": None},
+            }
+        ],
     }
-    response = client.post("/vapi/tools", json=payload)
+    response = client.post("/tools", json=payload, headers={"X-TOOLS-TOKEN": "test-secret"})
     assert response.status_code == 200
-    return json.loads(response.json()["results"][0]["result"])
+    return response.json()["results"][0]["result"]
 
 
-def test_get_case_status_falls_back_to_fast_extractor_when_gemini_returns_none(monkeypatch) -> None:
-    """Expected use: Gemini returns None; we still extract deterministically."""
+def test_get_case_status_tools_v2_uses_fast_extractor(monkeypatch) -> None:
+    """Expected use: /tools runs in realtime mode (no Gemini), using fast extraction."""
     from api_server.server.fastapi_app import app
     from api_server.vapi.router import session_store
 
     import api_server.vapi.handlers.case_status as case_status_handler
 
-    monkeypatch.setenv("GET_CASE_STATUS_FAST_EXTRACTOR", "1")
-
     called_fast = {"value": False}
 
     async def fake_gemini_extractor(message: str):  # noqa: ANN001
-        _ = message
-        return None
+        raise AssertionError(f"Gemini extraction should not be called for /tools (message={message!r})")
 
     def fake_fast_extractor(message: str):  # noqa: ANN001
         assert "Johnson" in message
@@ -115,7 +109,7 @@ def test_get_case_status_vehicle_description_is_saved_as_unit_nickname(monkeypat
         },
     )
 
-    async def fake_extractor(message: str):  # noqa: ANN001
+    def fake_fast_extractor(message: str):  # noqa: ANN001
         assert isinstance(message, str)
         return {
             "customer": {
@@ -124,16 +118,16 @@ def test_get_case_status_vehicle_description_is_saved_as_unit_nickname(monkeypat
                 "phone": None,
                 "company": None,
             },
-            "service": {
-                "location": None,
-                "complaint": None,
-                "unit_number": None,
-                "vin": None,
-                "vehicle_description": "Blue truck",
-            },
-        }
+                "service": {
+                    "location": None,
+                    "complaint": None,
+                    "unit_number": None,
+                    "vin": None,
+                    "vehicle_description": "Blue truck",
+                },
+            }
 
-    monkeypatch.setattr(case_status_handler, "extract_customer_service_info", fake_extractor)
+    monkeypatch.setattr(case_status_handler, "extract_customer_service_info_fast", fake_fast_extractor)
 
     app.dependency_overrides[get_database_client] = lambda: FakeDatabaseClient()
     try:
@@ -151,4 +145,3 @@ def test_get_case_status_vehicle_description_is_saved_as_unit_nickname(monkeypat
         assert parsed_result["then_action"] == ""
     finally:
         app.dependency_overrides.pop(get_database_client, None)
-

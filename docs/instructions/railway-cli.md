@@ -66,7 +66,7 @@ railway logs --lines 200
 railway logs --lines 200 --json
 
 # Filter logs by text or attributes
-railway logs --lines 200 --filter "POST /vapi/tools"
+railway logs --lines 200 --filter "POST /tools"
 railway logs --lines 200 --filter "@level:error"
 ```
 

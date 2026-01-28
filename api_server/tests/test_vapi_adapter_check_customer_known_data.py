@@ -4,7 +4,7 @@ This locks in the "smart tool" pattern: the assistant passes all customer
 data collected so far so the backend can return only what's still missing.
 """
 
-import json
+import os
 
 from fastapi.testclient import TestClient
 
@@ -21,29 +21,31 @@ def _post_check_customer_tool_call(*, call_id: str, arguments: dict) -> dict:
     from api_server.server.fastapi_app import app
 
     app.dependency_overrides[get_database_client] = lambda: FakeDatabaseClient()
+    previous_token = os.environ.get("TOOLS_TOKEN")
     try:
+        app_token = "test-secret"
+        os.environ["TOOLS_TOKEN"] = app_token
         client = TestClient(app)
         payload = {
-            "message": {
-                "type": "tool-calls",
-                "call": {"id": call_id},
-                "toolCallList": [
-                    {
-                        "id": "tool-call-check-customer",
-                        "function": {
-                            "name": "check_customer",
-                            "arguments": json.dumps(arguments),
-                        },
-                    }
-                ],
-                "assistant": {"extractedVariables": {}},
-            }
+            "call": {"id": call_id},
+            "tool_calls": [
+                {
+                    "id": "tool-call-check-customer",
+                    "name": "check_customer",
+                    "arguments": arguments,
+                }
+            ],
         }
-        response = client.post("/vapi/tools", json=payload)
+        response = client.post("/tools", json=payload, headers={"X-TOOLS-TOKEN": app_token})
         assert response.status_code == 200
         response_data = response.json()
-        return json.loads(response_data["results"][0]["result"])
+        assert response_data["results"][0]["ok"] is True
+        return response_data["results"][0]["result"]
     finally:
+        if previous_token is None:
+            os.environ.pop("TOOLS_TOKEN", None)
+        else:
+            os.environ["TOOLS_TOKEN"] = previous_token
         app.dependency_overrides.pop(get_database_client, None)
 
 
@@ -141,4 +143,3 @@ def test_check_customer_known_data_complete_returns_ready_to_register() -> None:
             "Immediately call register_new_customer now."
         ),
     }
-

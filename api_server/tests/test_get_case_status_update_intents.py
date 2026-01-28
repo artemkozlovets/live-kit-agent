@@ -5,6 +5,7 @@ can pivot into a correction flow when the caller asks to update details.
 """
 
 import json
+import os
 
 from fastapi.testclient import TestClient
 
@@ -21,28 +22,21 @@ class FakeDatabaseClient:
 
 
 def _post_get_case_status(*, test_client: TestClient, call_id: str, last_user_message: str) -> dict:
-    vapi_tool_call_payload = {
-        "message": {
-            "type": "tool-calls",
-            "call": {"id": call_id},
-            "toolCallList": [
-                {
-                    "id": "tool-call-get-case-status-update-intents",
-                    "function": {
-                        "name": "get_case_status",
-                        "arguments": json.dumps(
-                            {"call_id": call_id, "last_user_message": last_user_message}
-                        ),
-                    },
-                }
-            ],
-            "assistant": {"extractedVariables": {}},
-        }
+    os.environ.setdefault("TOOLS_TOKEN", "test-secret")
+    payload = {
+        "call": {"id": call_id},
+        "tool_calls": [
+            {
+                "id": "tool-call-get-case-status-update-intents",
+                "name": "get_case_status",
+                "arguments": {"last_user_message": last_user_message, "expected_field": None},
+            }
+        ],
     }
-    response = test_client.post("/vapi/tools", json=vapi_tool_call_payload)
+    response = test_client.post("/tools", json=payload, headers={"X-TOOLS-TOKEN": "test-secret"})
     assert response.status_code == 200
     response_data = response.json()
-    return json.loads(response_data["results"][0]["result"])
+    return response_data["results"][0]["result"]
 
 
 def test_get_case_status_update_intent_phone_prompts_for_new_value(monkeypatch) -> None:
@@ -170,4 +164,3 @@ def test_get_case_status_update_intent_without_customer_does_not_trigger(monkeyp
         assert parsed_result["current_phase"] != "correction"
     finally:
         app.dependency_overrides.pop(get_database_client, None)
-

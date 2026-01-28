@@ -67,7 +67,7 @@
     {
       "type": "function",
       "server": {
-        "url": "https://call-agent-development.up.railway.app/vapi/tools"
+        "url": "https://call-agent-development.up.railway.app/tools"
       },
       "function": {
         "name": "get_case_status",
@@ -100,7 +100,7 @@
     {
       "type": "function",
       "server": {
-        "url": "https://call-agent-development.up.railway.app/vapi/tools"
+        "url": "https://call-agent-development.up.railway.app/tools"
       },
       "function": {
         "name": "validate_phone",
@@ -133,7 +133,7 @@
     {
       "type": "function",
       "server": {
-        "url": "https://call-agent-development.up.railway.app/vapi/tools"
+        "url": "https://call-agent-development.up.railway.app/tools"
       },
       "function": {
         "name": "check_customer",
@@ -196,7 +196,7 @@
     {
       "type": "function",
       "server": {
-        "url": "https://call-agent-development.up.railway.app/vapi/tools"
+        "url": "https://call-agent-development.up.railway.app/tools"
       },
       "function": {
         "name": "register_new_customer",
@@ -292,7 +292,7 @@
     {
       "type": "function",
       "server": {
-        "url": "https://call-agent-development.up.railway.app/vapi/tools"
+        "url": "https://call-agent-development.up.railway.app/tools"
       },
       "function": {
         "name": "update_customer",

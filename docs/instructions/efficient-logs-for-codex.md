@@ -1,6 +1,6 @@
 # Efficient Logs for Codex (Low-Noise, Low-Tokens)
 
-Last updated: 2026-01-25
+Last updated: 2026-01-28
 
 ## Big picture
 Codex token usage is driven by how much text you paste into it. Log tooling (Vapi CLI, Railway CLI, or our scripts) does **not** cost tokens on its own — the cost happens when you copy/paste large outputs into Codex.
@@ -35,13 +35,13 @@ railway logs --lines 200 --filter "@level:error"
 
 If you’re correlating tool calls, filter to the tool endpoint:
 ```
-railway logs --lines 200 --filter "/vapi/tools"
+railway logs --lines 200 --filter "/tools"
 ```
 
 Tip: add timestamps for correlation:
 ```
 railway logs --lines 200 --filter "@level:error" --json
-railway logs --lines 200 --filter "/vapi/tools" --json
+railway logs --lines 200 --filter "/tools" --json
 ```
 
 ## When to “zoom in” (very noisy)
@@ -58,4 +58,4 @@ If you want help debugging, paste:
 - LiveKit room name (if known) + approximate UTC timestamp
 - `lk agent status` (IDs + version only)
 - The **smallest** relevant slice of `lk agent logs` (errors/warnings only)
-- The **smallest** relevant slice of Railway logs (ideally only errors or `/vapi/tools`)
+- The **smallest** relevant slice of Railway logs (ideally only errors or `/tools`)

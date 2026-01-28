@@ -10,7 +10,7 @@ This repo now supports a local “record everything” workflow via:
 - `python -m livekit_agent.agent console --record` (LiveKit SDK console recordings)
 - `./scripts/run_local_audio_console.sh` (one-command: backend + audio console + artifacts)
 
-Important: console mode still uses external STT/TTS providers (Deepgram/Cartesia) unless you swap them out.
+Important: the agent uses OpenAI Realtime by default. Set `AGENT_ENGINE=legacy` to run the previous Deepgram+Cartesia pipeline.
 
 ## Quick start (recommended)
 Run backend + agent locally, in audio mode, and save logs/artifacts to a per-run folder:
@@ -37,7 +37,7 @@ Artifacts are written under:
 You get:
 - `agent.log.jsonl` (agent logs)
 - `backend.log.jsonl` (backend logs)
-- `backend.tools.jsonl` (one JSONL event per `/vapi/tools` request with tool names + result keys)
+- `backend.tools.jsonl` (one JSONL event per `/tools` request with tool names + result keys)
 - `session-reports/*.json` (persisted session reports ingested at session end)
 - `backend.stdout.log` (uvicorn stdout/stderr)
 
@@ -65,10 +65,11 @@ Cons:
 How:
 ```bash
 # Backend (no Postgres required)
-USE_IN_MEMORY_DB=1 python -m uvicorn api_server.server.fastapi_app:app --host 127.0.0.1 --port 8000
+TOOLS_TOKEN=dev-secret USE_IN_MEMORY_DB=1 python -m uvicorn api_server.server.fastapi_app:app --host 127.0.0.1 --port 8000
 
 # Then run the agent with:
-export BACKEND_TOOLS_URL="http://127.0.0.1:8000/vapi/tools"
+export BACKEND_TOOLS_URL="http://127.0.0.1:8000/tools"
+export TOOLS_TOKEN="dev-secret"
 ```
 Pros:
 - Best way to debug the tool contract (exact payloads/responses) locally.
@@ -166,7 +167,7 @@ Cons:
 - Breakpoints can disrupt realtime sessions; logs can be noisy.
 
 ## What we observed (2026-01-25)
-- **Audio console mode works locally**: The agent starts in console mode, opens Deepgram STT + Cartesia TTS sockets, and receives transcripts.
+- **Audio console mode works locally**: The agent starts in console mode and uses OpenAI Realtime by default (set `AGENT_ENGINE=legacy` for Deepgram+Cartesia).
 - **Backend calls succeed**: `validate_phone`, `check_customer`, and `get_case_status` return `200 OK` from the local tools backend (`127.0.0.1:8000`).
 - **“Lag” root cause**: `get_case_status` returns:
   - `response_mode: "tool_first"`
@@ -189,9 +190,10 @@ To make local debugging less painful and reduce “stuck/silent” behavior:
 
 ## Repro (backend-only, no audio/TTY needed)
 ```bash
-curl -sS http://127.0.0.1:8000/vapi/tools \
+curl -sS http://127.0.0.1:8000/tools \
   -H "Content-Type: application/json" \
-  -d '{"message":{"type":"tool-calls","call":{"id":"debug-call","customer":{"number":"+13053179840"}},"customer":{"number":"+13053179840"},"toolCallList":[{"id":"tool-1","function":{"name":"get_case_status","arguments":"{\"last_user_message\":\"I have a flat tire.\"}"}}]}}' | jq .
+  -H "X-TOOLS-TOKEN: dev-secret" \
+  -d '{"call":{"id":"debug-call","customer":{"number":"+13053179840"}},"tool_calls":[{"id":"tool-1","name":"get_case_status","arguments":{"last_user_message":"I have a flat tire.","expected_field":null}}]}' | jq .
 ```
 Expected output:
 - Returns a JSON tool result (no HTTP error).
@@ -207,4 +209,4 @@ The local artifacts in `LOCAL_OBSERVABILITY_DIR` make this easy to confirm witho
 
 ## Services involved
 - Agent: `python -m livekit_agent.agent console`
-- Backend: `USE_IN_MEMORY_DB=1 python -m uvicorn api_server.server.fastapi_app:app --host 127.0.0.1 --port 8000`
+- Backend: `TOOLS_TOKEN=dev-secret USE_IN_MEMORY_DB=1 python -m uvicorn api_server.server.fastapi_app:app --host 127.0.0.1 --port 8000`

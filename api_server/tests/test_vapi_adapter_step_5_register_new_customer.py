@@ -1,6 +1,6 @@
 """TDD Step 5: register_new_customer uses backend-shaped fields and stores customer_id."""
 
-import json
+import os
 
 from fastapi.testclient import TestClient
 
@@ -29,46 +29,42 @@ def test_register_new_customer_stores_customer_id_in_session_and_normalizes_phon
     app.dependency_overrides[get_database_client] = lambda: fake_database_client
     try:
         test_client = TestClient(app)
+        token = "test-secret"
+        previous_token = os.environ.get("TOOLS_TOKEN")
+        os.environ["TOOLS_TOKEN"] = token
 
         vapi_tool_call_payload = {
-            "message": {
-                "type": "tool-calls",
-                "call": {"id": call_id},
-                "toolCallList": [
-                    {
-                        "id": "tool-call-register-new-customer",
-                        "function": {
-                            "name": "register_new_customer",
-                            "arguments": json.dumps(
-                                {
-                                    "first_name": "John",
-                                    "last_name": "Doe",
-                                    "company_name": "Acme Trucking",
-                                    "email_address": "john@acme.com",
-                                    "phone_number": "555-123-4567",
-                                    "customer_position": "fleet manager",
-                                    "marketing_source": "google",
-                                    "streetAddress": "123 Main St",
-                                    "city": "Dallas",
-                                    "state": "TX",
-                                    "country": "US",
-                                    "postalCode": "75201",
-                                }
-                            ),
-                        },
-                    }
-                ],
-                "assistant": {"extractedVariables": {}},
-            }
+            "call": {"id": call_id},
+            "tool_calls": [
+                {
+                    "id": "tool-call-register-new-customer",
+                    "name": "register_new_customer",
+                    "arguments": {
+                        "first_name": "John",
+                        "last_name": "Doe",
+                        "company_name": "Acme Trucking",
+                        "email_address": "john@acme.com",
+                        "phone_number": "555-123-4567",
+                        "customer_position": "fleet manager",
+                        "marketing_source": "google",
+                        "streetAddress": "123 Main St",
+                        "city": "Dallas",
+                        "state": "TX",
+                        "country": "US",
+                        "postalCode": "75201",
+                    },
+                }
+            ],
         }
 
         # Act
-        response = test_client.post("/vapi/tools", json=vapi_tool_call_payload)
+        response = test_client.post("/tools", json=vapi_tool_call_payload, headers={"X-TOOLS-TOKEN": token})
 
         # Assert
         assert response.status_code == 200
         response_data = response.json()
-        parsed_result = json.loads(response_data["results"][0]["result"])
+        assert response_data["results"][0]["ok"] is True
+        parsed_result = response_data["results"][0]["result"]
 
         assert parsed_result == {
             "customer_id": "CUST-999",
@@ -79,5 +75,8 @@ def test_register_new_customer_stores_customer_id_in_session_and_normalizes_phon
         stored_session = session_store.get(call_id)
         assert stored_session["customer_id"] == "CUST-999"
     finally:
+        if previous_token is None:
+            os.environ.pop("TOOLS_TOKEN", None)
+        else:
+            os.environ["TOOLS_TOKEN"] = previous_token
         app.dependency_overrides.pop(get_database_client, None)
-

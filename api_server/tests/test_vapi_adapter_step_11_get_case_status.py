@@ -4,7 +4,7 @@ This tool gives any assistant a real-time view of what we currently know about t
 and what to ask for next.
 """
 
-import json
+import os
 
 from fastapi.testclient import TestClient
 
@@ -20,6 +20,27 @@ class FakeDatabaseClient:
         return self.customers_by_id.get(customer_id)
 
 
+def _post_get_case_status(*, test_client: TestClient, call_id: str, tool_call_id: str) -> dict:
+    token = "test-secret"
+    previous_token = os.environ.get("TOOLS_TOKEN")
+    os.environ["TOOLS_TOKEN"] = token
+    payload = {
+        "call": {"id": call_id},
+        "tool_calls": [{"id": tool_call_id, "name": "get_case_status", "arguments": {"call_id": call_id}}],
+    }
+    try:
+        response = test_client.post("/tools", json=payload, headers={"X-TOOLS-TOKEN": token})
+        assert response.status_code == 200
+        response_data = response.json()
+        assert response_data["results"][0]["ok"] is True
+        return response_data["results"][0]["result"]
+    finally:
+        if previous_token is None:
+            os.environ.pop("TOOLS_TOKEN", None)
+        else:
+            os.environ["TOOLS_TOKEN"] = previous_token
+
+
 def test_get_case_status_new_call_returns_customer_intake_defaults() -> None:
     # Arrange
     from api_server.server.fastapi_app import app
@@ -32,69 +53,51 @@ def test_get_case_status_new_call_returns_customer_intake_defaults() -> None:
     app.dependency_overrides[get_database_client] = lambda: fake_database_client
     try:
         test_client = TestClient(app)
-        vapi_tool_call_payload = {
-            "message": {
-                "type": "tool-calls",
-                "call": {"id": call_id},
-                "toolCallList": [
-                    {
-                        "id": "tool-call-get-case-status-new",
-                        "function": {
-                            "name": "get_case_status",
-                            "arguments": json.dumps({"call_id": call_id}),
-                        },
-                    }
-                ],
-                "assistant": {"extractedVariables": {}},
-            }
-        }
 
         # Act
-        response = test_client.post("/vapi/tools", json=vapi_tool_call_payload)
+        parsed_result = _post_get_case_status(
+            test_client=test_client,
+            call_id=call_id,
+            tool_call_id="tool-call-get-case-status-new",
+        )
 
-        # Assert
-        assert response.status_code == 200
-        response_data = response.json()
-        parsed_result = json.loads(response_data["results"][0]["result"])
-
-        assert parsed_result == {
-            "customer": {
-                "id": None,
-                "first_name": None,
-                "last_name": None,
-                "phone": None,
-                "email": None,
-                "company": None,
-            },
-            "service": {
-                "id": None,
-                "vin": None,
-                "unit_number": None,
-                "unit_nickname": None,
-                "location": None,
-                "location_is_safe": None,
-                "is_mobile": None,
-                "complaint": None,
-            },
-            "booking": {
-                "id": None,
-                "eta": None,
-                "technician": None,
-                "status": None,
-            },
-            "missing_fields": ["first_name", "last_name", "phone"],
-            "current_phase": "customer_intake",
-            "ready_for_handoff": {
-                "to_service_collection": False,
-                "to_booking": False,
-            },
-            "next_action": "This is a new call. Start by collecting the customer's name.",
-            "validation_state": {
-                "phone_attempts": 0,
-                "vin_attempts": 0,
-                "vin_fallback_triggered": False,
-            },
+        assert parsed_result["customer"] == {
+            "id": None,
+            "first_name": None,
+            "last_name": None,
+            "phone": None,
+            "email": None,
+            "company": None,
         }
+        assert parsed_result["service"] == {
+            "id": None,
+            "vin": None,
+            "unit_number": None,
+            "unit_nickname": None,
+            "location": None,
+            "location_is_safe": None,
+            "is_mobile": None,
+            "complaint": None,
+        }
+        assert parsed_result["booking"] == {
+            "id": None,
+            "eta": None,
+            "technician": None,
+            "status": None,
+        }
+        assert parsed_result["missing_fields"] == ["first_name", "last_name", "phone"]
+        assert parsed_result["current_phase"] == "customer_intake"
+        assert parsed_result["ready_for_handoff"] == {
+            "to_service_collection": False,
+            "to_booking": False,
+        }
+        assert parsed_result["next_action"] == "This is a new call. Start by collecting the customer's name."
+        assert parsed_result["validation_state"] == {
+            "phone_attempts": 0,
+            "vin_attempts": 0,
+            "vin_fallback_triggered": False,
+        }
+        assert "customer_known_data" in parsed_result
     finally:
         app.dependency_overrides.pop(get_database_client, None)
 
@@ -132,30 +135,13 @@ def test_get_case_status_vin_fallback_triggered_prioritizes_unit_number() -> Non
     app.dependency_overrides[get_database_client] = lambda: fake_database_client
     try:
         test_client = TestClient(app)
-        vapi_tool_call_payload = {
-            "message": {
-                "type": "tool-calls",
-                "call": {"id": call_id},
-                "toolCallList": [
-                    {
-                        "id": "tool-call-get-case-status-vin-fallback",
-                        "function": {
-                            "name": "get_case_status",
-                            "arguments": json.dumps({"call_id": call_id}),
-                        },
-                    }
-                ],
-                "assistant": {"extractedVariables": {}},
-            }
-        }
 
         # Act
-        response = test_client.post("/vapi/tools", json=vapi_tool_call_payload)
-
-        # Assert
-        assert response.status_code == 200
-        response_data = response.json()
-        parsed_result = json.loads(response_data["results"][0]["result"])
+        parsed_result = _post_get_case_status(
+            test_client=test_client,
+            call_id=call_id,
+            tool_call_id="tool-call-get-case-status-vin-fallback",
+        )
 
         assert parsed_result["current_phase"] == "service_collection"
         assert parsed_result["missing_fields"] == ["unit_number"]
@@ -191,30 +177,13 @@ def test_get_case_status_unknown_customer_id_gracefully_degrades_to_customer_int
     app.dependency_overrides[get_database_client] = lambda: fake_database_client
     try:
         test_client = TestClient(app)
-        vapi_tool_call_payload = {
-            "message": {
-                "type": "tool-calls",
-                "call": {"id": call_id},
-                "toolCallList": [
-                    {
-                        "id": "tool-call-get-case-status-missing-customer",
-                        "function": {
-                            "name": "get_case_status",
-                            "arguments": json.dumps({"call_id": call_id}),
-                        },
-                    }
-                ],
-                "assistant": {"extractedVariables": {}},
-            }
-        }
 
         # Act
-        response = test_client.post("/vapi/tools", json=vapi_tool_call_payload)
-
-        # Assert
-        assert response.status_code == 200
-        response_data = response.json()
-        parsed_result = json.loads(response_data["results"][0]["result"])
+        parsed_result = _post_get_case_status(
+            test_client=test_client,
+            call_id=call_id,
+            tool_call_id="tool-call-get-case-status-missing-customer",
+        )
 
         assert parsed_result["customer"]["id"] is None
         assert parsed_result["current_phase"] == "customer_intake"
@@ -226,4 +195,3 @@ def test_get_case_status_unknown_customer_id_gracefully_degrades_to_customer_int
         }
     finally:
         app.dependency_overrides.pop(get_database_client, None)
-

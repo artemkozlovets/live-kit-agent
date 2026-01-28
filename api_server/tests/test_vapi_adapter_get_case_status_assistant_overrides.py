@@ -1,6 +1,6 @@
 """get_case_status: use assistant-request overrides to prefill known customer."""
 
-import json
+import os
 
 from fastapi.testclient import TestClient
 
@@ -20,27 +20,30 @@ def _post_get_case_status(
     tool_args: dict | None = None,
 ) -> dict:
     tool_args = tool_args or {"call_id": call_id}
+    token = "test-secret"
+    previous_token = os.environ.get("TOOLS_TOKEN")
+    os.environ["TOOLS_TOKEN"] = token
     payload = {
-        "message": {
-            "type": "tool-calls",
-            "call": {"id": call_id, **call_overrides},
-            "toolCallList": [
-                {
-                    "id": "tool-call-get-case-status-overrides",
-                    "function": {
-                        "name": "get_case_status",
-                        "arguments": json.dumps(tool_args),
-                    },
-                }
-            ],
-            "assistant": {"extractedVariables": {}},
-        }
+        "call": {"id": call_id, **call_overrides},
+        "tool_calls": [
+            {
+                "id": "tool-call-get-case-status-overrides",
+                "name": "get_case_status",
+                "arguments": tool_args,
+            }
+        ],
     }
-
-    response = test_client.post("/vapi/tools", json=payload)
-    assert response.status_code == 200
-    response_data = response.json()
-    return json.loads(response_data["results"][0]["result"])
+    try:
+        response = test_client.post("/tools", json=payload, headers={"X-TOOLS-TOKEN": token})
+        assert response.status_code == 200
+        response_data = response.json()
+        assert response_data["results"][0]["ok"] is True
+        return response_data["results"][0]["result"]
+    finally:
+        if previous_token is None:
+            os.environ.pop("TOOLS_TOKEN", None)
+        else:
+            os.environ["TOOLS_TOKEN"] = previous_token
 
 
 def test_get_case_status_prefers_assistant_overrides_for_known_customer() -> None:

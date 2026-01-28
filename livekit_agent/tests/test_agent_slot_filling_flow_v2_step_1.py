@@ -1,5 +1,6 @@
+from __future__ import annotations
+
 import os
-import json
 import asyncio
 import time
 from typing import Any
@@ -20,7 +21,9 @@ from livekit_agent.backend_tools_client import BackendToolsClient  # noqa: E402
 
 
 @pytest.mark.asyncio
-async def test_agent_slot_filling_info_dump_to_booking(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_agent_slot_filling_v2_info_dump_to_booking_requires_confirm_then_store(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("AGENT_SLOT_FILLING", "1")
     monkeypatch.setenv("AGENT_FAST_INTAKE", "1")
     monkeypatch.setenv("AGENT_GREETING", "Hello, this is Sarah from AFS, how can I help?")
@@ -28,11 +31,15 @@ async def test_agent_slot_filling_info_dump_to_booking(monkeypatch: pytest.Monke
     calls: list[str] = []
     assistant_messages: list[str] = []
 
-    async def post_json(url: str, payload: dict[str, Any]) -> dict[str, Any]:
-        tool_call = payload["message"]["toolCallList"][0]
+    async def post_json(url: str, payload: dict[str, Any], headers: dict[str, str] | None = None) -> dict[str, Any]:
+        assert url.endswith("/tools")
+        assert headers is not None
+        assert headers.get("X-TOOLS-TOKEN") == "test-secret"
+
+        tool_call = payload["tool_calls"][0]
         tool_call_id = tool_call["id"]
-        tool_name = tool_call["function"]["name"]
-        tool_args = json.loads(tool_call["function"]["arguments"])
+        tool_name = tool_call["name"]
+        tool_args = tool_call["arguments"]
 
         calls.append(tool_name)
 
@@ -87,7 +94,6 @@ async def test_agent_slot_filling_info_dump_to_booking(monkeypatch: pytest.Monke
             assert tool_args["streetAddress"] == "123 Main St"
             result_obj = {"customer_id": "CUST-1"}
         elif tool_name == "get_session_summary":
-            # First call occurs before add_service; second call after add_service.
             if "add_service" not in calls:
                 result_obj = {"service_count": 0, "services": [], "services_confirmed": False}
             else:
@@ -110,6 +116,8 @@ async def test_agent_slot_filling_info_dump_to_booking(monkeypatch: pytest.Monke
             assert tool_args["service_location"] == "6th Street"
             assert tool_args["service_complaint"] == "flat tire"
             result_obj = {"added": True, "service_count": 1}
+        elif tool_name == "confirm_services":
+            result_obj = {"confirmed": True}
         elif tool_name == "store_service_order":
             result_obj = {"success": True, "order_ids": ["ORDER-1"]}
         elif tool_name == "send_confirmation_sms":
@@ -117,9 +125,17 @@ async def test_agent_slot_filling_info_dump_to_booking(monkeypatch: pytest.Monke
         else:
             result_obj = {"ok": True}
 
-        return {"results": [{"toolCallId": tool_call_id, "result": json.dumps(result_obj)}]}
+        return {
+            "results": [
+                {"tool_call_id": tool_call_id, "name": tool_name, "ok": True, "result": result_obj}
+            ]
+        }
 
-    backend = BackendToolsClient(tools_url="https://example.test/vapi/tools", post_json=post_json)
+    backend = BackendToolsClient(
+        tools_url="https://example.test/tools",
+        post_json=post_json,
+        tools_token="test-secret",
+    )
 
     agent = VapiAdapterAgent(
         backend_client=backend,
@@ -141,7 +157,6 @@ async def test_agent_slot_filling_info_dump_to_booking(monkeypatch: pytest.Monke
 
         await session.start(agent)
 
-        # Turn 1: info dump -> register + add service -> ask final confirmation.
         await agent.on_user_turn_completed(
             ChatContext(),
             _Msg(
@@ -161,16 +176,16 @@ async def test_agent_slot_filling_info_dump_to_booking(monkeypatch: pytest.Monke
         assert "register_new_customer" in calls
         assert "add_service" in calls
         assert "get_session_summary" in calls
-        assert any("Just to confirm" in msg for msg in assistant_messages)
+        assert "confirm_services" not in calls
 
-        # Turn 2: confirm -> store order -> send confirmation -> closing.
         await agent.on_user_turn_completed(ChatContext(), _Msg("Yes"))
 
         start = time.monotonic()
         while not any("You're all set" in msg for msg in assistant_messages) and time.monotonic() - start < 1.0:
             await asyncio.sleep(0.01)
 
+        assert "confirm_services" in calls
         assert "store_service_order" in calls
+        assert calls.index("confirm_services") < calls.index("store_service_order")
         assert "send_confirmation_sms" in calls
         assert any("You're all set" in msg for msg in assistant_messages)
-

@@ -6,6 +6,7 @@ Big picture:
 """
 
 import json
+import os
 
 from fastapi.testclient import TestClient
 
@@ -16,26 +17,21 @@ def test_validate_phone_valid_stores_phone_number_in_session() -> None:
 
     call_id = "call-validate-phone-persists"
     session_store.clear(call_id)
+    os.environ.setdefault("TOOLS_TOKEN", "test-secret")
 
     client = TestClient(app)
     payload = {
-        "message": {
-            "type": "tool-calls",
-            "call": {"id": call_id},
-            "toolCallList": [
-                {
-                    "id": "tool-call-validate-phone",
-                    "function": {
-                        "name": "validate_phone",
-                        "arguments": json.dumps({"phone_number": "305-317-9840"}),
-                    },
-                }
-            ],
-            "assistant": {"extractedVariables": {}},
-        }
+        "call": {"id": call_id},
+        "tool_calls": [
+            {
+                "id": "tool-call-validate-phone",
+                "name": "validate_phone",
+                "arguments": {"phone_number": "305-317-9840"},
+            }
+        ],
     }
 
-    response = client.post("/vapi/tools", json=payload)
+    response = client.post("/tools", json=payload, headers={"X-TOOLS-TOKEN": "test-secret"})
     assert response.status_code == 200
 
     stored = session_store.get(call_id)

@@ -1,6 +1,6 @@
 """TDD Step 7: store_service_order fail-fast + session lifecycle."""
 
-import json
+import os
 
 from fastapi.testclient import TestClient
 
@@ -99,33 +99,30 @@ def test_store_service_order_missing_unit_auto_creates_and_marks_session_complet
     )
 
     app.dependency_overrides[get_database_client] = lambda: fake_database_client
+    previous_token = os.environ.get("TOOLS_TOKEN")
     try:
         test_client = TestClient(app)
+        token = "test-secret"
+        os.environ["TOOLS_TOKEN"] = token
 
         vapi_tool_call_payload = {
-            "message": {
-                "type": "tool-calls",
-                "call": {"id": call_id},
-                "toolCallList": [
-                    {
-                        "id": "tool-call-store-service-order-fail-fast",
-                        "function": {
-                            "name": "store_service_order",
-                            "arguments": json.dumps({}),
-                        },
-                    }
-                ],
-                "assistant": {"extractedVariables": {}},
-            }
+            "call": {"id": call_id},
+            "tool_calls": [
+                {"id": "tool-call-confirm-services", "name": "confirm_services", "arguments": {}},
+                {"id": "tool-call-store-service-order-fail-fast", "name": "store_service_order", "arguments": {}},
+            ],
         }
 
         # Act
-        response = test_client.post("/vapi/tools", json=vapi_tool_call_payload)
+        response = test_client.post("/tools", json=vapi_tool_call_payload, headers={"X-TOOLS-TOKEN": token})
 
         # Assert
         assert response.status_code == 200
         response_data = response.json()
-        parsed_result = json.loads(response_data["results"][0]["result"])
+        results = response_data["results"]
+        assert results[0]["ok"] is True
+        assert results[1]["ok"] is True
+        parsed_result = results[1]["result"]
 
         assert parsed_result == {
             "success": True,
@@ -141,6 +138,10 @@ def test_store_service_order_missing_unit_auto_creates_and_marks_session_complet
         assert stored_session.get("order_ids") == ["SO-1", "SO-2"]
         assert isinstance(stored_session.get("services"), list)
     finally:
+        if previous_token is None:
+            os.environ.pop("TOOLS_TOKEN", None)
+        else:
+            os.environ["TOOLS_TOKEN"] = previous_token
         app.dependency_overrides.pop(get_database_client, None)
 
 
@@ -188,33 +189,30 @@ def test_store_service_order_success_creates_one_order_per_service_and_marks_ses
     )
 
     app.dependency_overrides[get_database_client] = lambda: fake_database_client
+    previous_token = os.environ.get("TOOLS_TOKEN")
     try:
         test_client = TestClient(app)
+        token = "test-secret"
+        os.environ["TOOLS_TOKEN"] = token
 
         vapi_tool_call_payload = {
-            "message": {
-                "type": "tool-calls",
-                "call": {"id": call_id},
-                "toolCallList": [
-                    {
-                        "id": "tool-call-store-service-order-success",
-                        "function": {
-                            "name": "store_service_order",
-                            "arguments": json.dumps({}),
-                        },
-                    }
-                ],
-                "assistant": {"extractedVariables": {}},
-            }
+            "call": {"id": call_id},
+            "tool_calls": [
+                {"id": "tool-call-confirm-services", "name": "confirm_services", "arguments": {}},
+                {"id": "tool-call-store-service-order-success", "name": "store_service_order", "arguments": {}},
+            ],
         }
 
         # Act
-        response = test_client.post("/vapi/tools", json=vapi_tool_call_payload)
+        response = test_client.post("/tools", json=vapi_tool_call_payload, headers={"X-TOOLS-TOKEN": token})
 
         # Assert
         assert response.status_code == 200
         response_data = response.json()
-        parsed_result = json.loads(response_data["results"][0]["result"])
+        results = response_data["results"]
+        assert results[0]["ok"] is True
+        assert results[1]["ok"] is True
+        parsed_result = results[1]["result"]
 
         assert parsed_result == {
             "success": True,
@@ -228,4 +226,8 @@ def test_store_service_order_success_creates_one_order_per_service_and_marks_ses
         assert stored_session.get("order_ids") == ["SO-1", "SO-2"]
         assert isinstance(stored_session.get("services"), list)
     finally:
+        if previous_token is None:
+            os.environ.pop("TOOLS_TOKEN", None)
+        else:
+            os.environ["TOOLS_TOKEN"] = previous_token
         app.dependency_overrides.pop(get_database_client, None)

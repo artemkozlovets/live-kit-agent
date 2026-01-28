@@ -1,6 +1,6 @@
 # Squad Assistants (`squad/assistants/`)
 
-> **Last Updated**: 2026-01-24  
+> **Last Updated**: 2026-01-28  
 > **Audience**: Codex (repo context)  
 > **Status**: Draft
 
@@ -23,14 +23,14 @@
     - `handoff_to_Booking`
 
 ## Handoffs (Vapi vs LiveKit)
-- In the API server (Vapi runtime), handoff tool names map to assistant IDs and set `destination` in the `/vapi/tools` response.
-- In the LiveKit agent, these handoff tools are treated as local “phase change” actions (no backend call required).
+- Handoff tools are treated as local “phase change” actions in the LiveKit agent (no backend call required).
+- The provider-agnostic `POST /tools` endpoint does **not** return Vapi `destination` objects.
 
 ## Gotchas (high-signal)
 - Tool schemas in these JSON files should match backend expectations. If they drift:
   - the agent’s tool LLM may try to call tools that don’t exist, or
   - parameters may be ignored/mismatched.
-- Some assistant JSONs include `call_id` as a tool parameter for `get_case_status`, but the backend derives call id from the payload (`message.call.id`).
+- Some assistant JSONs include `call_id` as a tool parameter for `get_case_status`, but the backend derives call id from the payload (`call.id`).
 
 ## Related docs
 - `docs/documentations/livekit-agent.md`

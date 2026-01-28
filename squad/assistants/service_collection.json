@@ -61,7 +61,7 @@
     {
       "type": "function",
       "server": {
-        "url": "https://call-agent-development.up.railway.app/vapi/tools"
+        "url": "https://call-agent-development.up.railway.app/tools"
       },
       "function": {
         "name": "get_case_status",
@@ -103,7 +103,7 @@
     {
       "type": "function",
       "server": {
-        "url": "https://call-agent-development.up.railway.app/vapi/tools"
+        "url": "https://call-agent-development.up.railway.app/tools"
       },
       "function": {
         "name": "validate_vin",
@@ -140,7 +140,7 @@
     {
       "type": "function",
       "server": {
-        "url": "https://call-agent-development.up.railway.app/vapi/tools"
+        "url": "https://call-agent-development.up.railway.app/tools"
       },
       "function": {
         "name": "check_vin_database",
@@ -177,7 +177,7 @@
     {
       "type": "function",
       "server": {
-        "url": "https://call-agent-development.up.railway.app/vapi/tools"
+        "url": "https://call-agent-development.up.railway.app/tools"
       },
       "function": {
         "name": "add_service",
@@ -231,7 +231,7 @@
     {
       "type": "function",
       "server": {
-        "url": "https://call-agent-development.up.railway.app/vapi/tools"
+        "url": "https://call-agent-development.up.railway.app/tools"
       },
       "function": {
         "name": "confirm_services",
@@ -282,7 +282,7 @@
     {
       "type": "function",
       "server": {
-        "url": "https://call-agent-development.up.railway.app/vapi/tools"
+        "url": "https://call-agent-development.up.railway.app/tools"
       },
       "function": {
         "name": "update_customer",
@@ -353,7 +353,7 @@
     {
       "type": "function",
       "server": {
-        "url": "https://call-agent-development.up.railway.app/vapi/tools"
+        "url": "https://call-agent-development.up.railway.app/tools"
       },
       "function": {
         "name": "update_service_order",
@@ -409,7 +409,7 @@
     {
       "type": "function",
       "server": {
-        "url": "https://call-agent-development.up.railway.app/vapi/tools"
+        "url": "https://call-agent-development.up.railway.app/tools"
       },
       "function": {
         "name": "get_session_summary",

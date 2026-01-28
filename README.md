@@ -1,6 +1,6 @@
-# Vapi → LiveKit migration (Milestone 1)
+# OpenAI Realtime + LiveKit agent
 
-This repo contains the Milestone 1 foundations for migrating the voice runtime from Vapi to LiveKit while keeping the backend tool contract (`POST /vapi/tools`) unchanged.
+This repo runs a LiveKit voice agent using **OpenAI Realtime** as the conversation engine, plus a provider-agnostic backend tools API (`POST /tools`).
 
 ## Repo layout (two services, one repo)
 - LiveKit agent service (deploy to LiveKit Cloud): `livekit_agent/`
@@ -8,10 +8,11 @@ This repo contains the Milestone 1 foundations for migrating the voice runtime f
 - Shared tool schemas (source of truth): `squad/assistants/*.json`
 
 ## What’s implemented
-- Vapi-shaped tool-call payload builder: `livekit_agent/vapi_payload.py`
 - Backend tools client (async) with typed errors: `livekit_agent/backend_tools_client.py`
+- Provider-agnostic `/tools` v2 payload builder: `livekit_agent/tools_v2_payload.py`
 - Tool schema loader from `squad/assistants/*.json` (+ local handoff tool schemas): `livekit_agent/tools.py`
 - Deterministic flow controller (preflight callback gate + phase transitions + response_mode ordering): `livekit_agent/flow_controller.py`
+- OpenAI Realtime session + agent: `livekit_agent/openai_realtime_session.py`, `livekit_agent/openai_realtime_agent.py`
 
 ## Run tests
 ```bash
@@ -36,11 +37,9 @@ Helpful options:
 Environment variables:
 - `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`
 - `BACKEND_TOOLS_URL` (defaults to the dev URL in `squad/assistants/*.json`)
-- `DEEPGRAM_API_KEY`
-- `DEEPGRAM_STT_MODEL` (optional, defaults to `flux-general-en`)
-- `DEEPGRAM_EAGER_EOT_THRESHOLD` (optional, defaults to `0.4`)
-- `CARTESIA_API_KEY` (optional: `CARTESIA_VOICE_ID`, `CARTESIA_TTS_MODEL`, `CARTESIA_SPEED`, `CARTESIA_TEXT_PACING`)
-- `GOOGLE_API_KEY` (optional: `GOOGLE_LLM_MODEL`, defaults to `gemini-2.5-flash`)
+- `TOOLS_TOKEN` (shared secret header used by the agent to call `POST /tools`)
+- `OPENAI_API_KEY`
+- `AGENT_ENGINE` (optional: defaults to `openai_realtime`; set to `legacy` to use the old Deepgram+Cartesia pipeline)
 
 Run in console mode (local, no telephony):
 ```bash
@@ -52,15 +51,15 @@ Run in dev mode (connects to LiveKit and joins dispatched rooms):
 python -m livekit_agent.agent dev
 ```
 
-Note: if `GOOGLE_API_KEY` is not set, the agent falls back to a simple `then_action` string parser (useful for local testing, not production-grade).
+Note: `GOOGLE_API_KEY`, `DEEPGRAM_API_KEY`, and `CARTESIA_API_KEY` are only required when using `AGENT_ENGINE=legacy`.
 
 ## Run the tools backend locally (debug)
-The agent expects a Vapi-compatible `POST /vapi/tools` endpoint.
+The agent expects a `POST /tools` endpoint.
 
 If you don't have Postgres configured yet, you can run a non-durable in-memory backend:
 
 ```bash
-USE_IN_MEMORY_DB=1 .venv/bin/python -m uvicorn api_server.server.fastapi_app:app --host 127.0.0.1 --port 8000
+TOOLS_TOKEN=dev-secret USE_IN_MEMORY_DB=1 .venv/bin/python -m uvicorn api_server.server.fastapi_app:app --host 127.0.0.1 --port 8000
 ```
 
 ## Deploy the tools backend to Railway

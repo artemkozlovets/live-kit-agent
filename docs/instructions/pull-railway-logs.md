@@ -1,6 +1,6 @@
 # Pulling Railway Logs
 
-Last updated: 2026-01-25
+Last updated: 2026-01-28
 
 ## Big picture
 Railway logs show what your service printed during builds and runtime. Use them to debug failures or confirm behavior.
@@ -25,7 +25,7 @@ Lowest-noise starting points:
 railway logs --lines 200 --filter "@level:error"
 
 # Focus on tool calls to our server
-railway logs --lines 200 --filter "/vapi/tools"
+railway logs --lines 200 --filter "/tools"
 ```
 
 ## Tip: include timestamps (best for correlating to a specific call)
@@ -33,7 +33,7 @@ Use `--json` so each log line includes a `timestamp` you can line up with LiveKi
 
 ```bash
 railway logs --lines 200 --filter "@level:error" --json
-railway logs --lines 200 --filter "/vapi/tools" --json
+railway logs --lines 200 --filter "/tools" --json
 ```
 
 ## Related docs

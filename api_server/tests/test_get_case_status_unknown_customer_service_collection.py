@@ -6,6 +6,7 @@ Big picture:
 """
 
 import json
+import os
 
 from fastapi.testclient import TestClient
 
@@ -37,30 +38,25 @@ def test_unknown_customer_with_name_and_phone_enters_service_collection(monkeypa
             "phone_number": "+15551230000",
         },
     )
+    os.environ.setdefault("TOOLS_TOKEN", "test-secret")
 
     app.dependency_overrides[get_database_client] = lambda: FakeDatabaseClient()
     try:
         client = TestClient(app)
         payload = {
-            "message": {
-                "type": "tool-calls",
-                "call": {"id": call_id},
-                "toolCallList": [
-                    {
-                        "id": "tool-call-get-case-status",
-                        "function": {
-                            "name": "get_case_status",
-                            "arguments": json.dumps({"call_id": call_id, "last_user_message": "Hi"}),
-                        },
-                    }
-                ],
-                "assistant": {"extractedVariables": {}},
-            }
+            "call": {"id": call_id},
+            "tool_calls": [
+                {
+                    "id": "tool-call-get-case-status",
+                    "name": "get_case_status",
+                    "arguments": {"last_user_message": "Hi", "expected_field": None},
+                }
+            ],
         }
 
-        response = client.post("/vapi/tools", json=payload)
+        response = client.post("/tools", json=payload, headers={"X-TOOLS-TOKEN": "test-secret"})
         assert response.status_code == 200
-        parsed_result = json.loads(response.json()["results"][0]["result"])
+        parsed_result = response.json()["results"][0]["result"]
 
         assert parsed_result["current_phase"] == "service_collection"
         assert parsed_result["ready_for_handoff"]["to_service_collection"] is True

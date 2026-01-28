@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 from fastapi.testclient import TestClient
 
@@ -40,35 +41,25 @@ def test_get_case_status_slot_filling_includes_customer_known_data(monkeypatch) 
             "postalCode": "75201",
         },
     )
+    os.environ.setdefault("TOOLS_TOKEN", "test-secret")
 
     app.dependency_overrides[get_database_client] = lambda: FakeDatabaseClient()
     try:
         client = TestClient(app)
         payload = {
-            "message": {
-                "type": "tool-calls",
-                "call": {"id": call_id},
-                "toolCallList": [
-                    {
-                        "id": "tool-call-get-case-status-slot-filling-known-data",
-                        "function": {
-                            "name": "get_case_status",
-                            "arguments": json.dumps(
-                                {
-                                    "call_id": call_id,
-                                    "last_user_message": "Hi",
-                                }
-                            ),
-                        },
-                    }
-                ],
-                "assistant": {"extractedVariables": {}},
-            }
+            "call": {"id": call_id},
+            "tool_calls": [
+                {
+                    "id": "tool-call-get-case-status-slot-filling-known-data",
+                    "name": "get_case_status",
+                    "arguments": {"last_user_message": "Hi", "expected_field": None},
+                }
+            ],
         }
 
-        response = client.post("/vapi/tools", json=payload)
+        response = client.post("/tools", json=payload, headers={"X-TOOLS-TOKEN": "test-secret"})
         assert response.status_code == 200
-        parsed_result = json.loads(response.json()["results"][0]["result"])
+        parsed_result = response.json()["results"][0]["result"]
 
         assert parsed_result["customer_known_data"] == {
             "first_name": "Kyle",
@@ -86,4 +77,3 @@ def test_get_case_status_slot_filling_includes_customer_known_data(monkeypatch) 
         }
     finally:
         app.dependency_overrides.pop(get_database_client, None)
-

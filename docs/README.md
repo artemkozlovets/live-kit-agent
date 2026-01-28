@@ -1,6 +1,6 @@
 # Docs (Codex Context)
 
-> **Last Updated**: 2026-01-25  
+> **Last Updated**: 2026-01-28  
 > **Audience**: Codex (repo context)  
 > **Status**: Draft
 
@@ -16,6 +16,7 @@ This folder is documentation optimized for *Codex-style codebase work*: fast ret
 `docs/instructions/` contains operational “how to” guides (example: pulling Railway logs).
 
 Recommended starting points:
+- [`docs/instructions/openai-realtime-rollout.md`](instructions/openai-realtime-rollout.md)
 - [`docs/instructions/verify-railway-livekit-sync.md`](instructions/verify-railway-livekit-sync.md)
 - [`docs/instructions/pull-railway-logs.md`](instructions/pull-railway-logs.md)
 - [`docs/instructions/debug-livekit-agent-silence.md`](instructions/debug-livekit-agent-silence.md)

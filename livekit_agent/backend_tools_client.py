@@ -10,9 +10,9 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
-from livekit_agent.vapi_payload import build_vapi_tool_call_request
+from livekit_agent.tools_v2_payload import build_tools_v2_request
 
-logger = logging.getLogger("livekit-agent-vapi-adapter.backend-tools")
+logger = logging.getLogger("livekit-agent.backend-tools")
 
 
 def _truthy_env(name: str) -> bool:
@@ -49,6 +49,10 @@ class BackendToolsResponseError(BackendToolsClientError):
     pass
 
 
+class BookingNotConfirmedError(BackendToolsClientError):
+    pass
+
+
 class ToolResultMissingError(BackendToolsClientError):
     pass
 
@@ -65,6 +69,7 @@ class BackendToolsClient:
     tools_url: str
     post_json: PostJson | None = None
     timeout_s: float = 30.0
+    tools_token: str | None = None
 
     async def call_tool(
         self,
@@ -72,6 +77,7 @@ class BackendToolsClient:
         call_id: str,
         sip_phone_number: str | None,
         confirmed_callback_number: str | None,
+        assistant_variable_values: dict[str, str] | None = None,
         tool_call_id: str,
         tool_name: str,
         tool_arguments: dict[str, Any],
@@ -89,18 +95,28 @@ class BackendToolsClient:
             },
         )
 
-        payload = build_vapi_tool_call_request(
+        tools_token = (self.tools_token or os.getenv("TOOLS_TOKEN", "")).strip()
+        if not tools_token:
+            raise BackendToolsClientError("TOOLS_TOKEN is required for /tools")
+
+        headers: dict[str, str] = {"X-TOOLS-TOKEN": tools_token}
+        payload = build_tools_v2_request(
             call_id=call_id,
-            sip_phone_number=sip_phone_number,
-            confirmed_callback_number=confirmed_callback_number,
-            tool_call_id=tool_call_id,
-            tool_name=tool_name,
-            tool_arguments=tool_arguments,
+            customer_number_raw=sip_phone_number,
+            call_customer_number_confirmed=confirmed_callback_number,
+            assistant_variable_values=assistant_variable_values,
+            tool_calls=[
+                {"id": tool_call_id, "name": tool_name, "arguments": tool_arguments},
+            ],
         )
 
         post_json = self.post_json or self._default_post_json
         try:
-            response = await post_json(self.tools_url, payload)
+            try:
+                response = await post_json(self.tools_url, payload, headers=headers)  # type: ignore[misc]
+            except TypeError:
+                # Reason: Backwards-compatible DI for existing tests/mocks.
+                response = await post_json(self.tools_url, payload)
         except TimeoutError as exc:
             logger.warning(
                 "backend tools request timed out",
@@ -129,38 +145,45 @@ class BackendToolsClient:
         if not isinstance(results, list):
             raise BackendToolsResponseError("Backend response missing 'results' list")
 
+        return self._parse_tools_v2_result(
+            results=results,
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+            masked_call_id=masked_call_id,
+            started=started,
+        )
+
+    def _parse_tools_v2_result(
+        self,
+        *,
+        results: list[object],
+        tool_call_id: str,
+        tool_name: str,
+        masked_call_id: str,
+        started: float,
+    ) -> dict[str, Any]:
         matched_result: dict[str, Any] | None = None
         for result in results:
-            if isinstance(result, dict) and result.get("toolCallId") == tool_call_id:
+            if isinstance(result, dict) and result.get("tool_call_id") == tool_call_id:
                 matched_result = result
                 break
 
         if matched_result is None:
-            raise ToolResultMissingError(f"Tool result for toolCallId={tool_call_id} not found")
+            raise ToolResultMissingError(f"Tool result for tool_call_id={tool_call_id} not found")
+
+        ok = matched_result.get("ok")
+        if ok is False:
+            error_obj = matched_result.get("error")
+            error_dict = error_obj if isinstance(error_obj, dict) else {}
+            code = error_dict.get("code")
+            message = error_dict.get("message")
+            if code == "booking_not_confirmed":
+                raise BookingNotConfirmedError(str(message) if message else "Booking not confirmed")
+            raise BackendToolsResponseError(f"Backend tool failed code={code} message={message}")
 
         raw_result = matched_result.get("result")
-        if isinstance(raw_result, dict):
-            logger.debug(
-                "backend tool result received",
-                extra={
-                    "call_id": masked_call_id,
-                    "tool_name": tool_name,
-                    "tool_call_id": tool_call_id,
-                    "elapsed_ms": int((time.perf_counter() - started) * 1000),
-                    "result_keys": _safe_keys(raw_result),
-                },
-            )
-            return raw_result
-        if not isinstance(raw_result, str):
-            raise ToolResultParseError("Tool result is not a JSON string")
-
-        try:
-            parsed = json.loads(raw_result)
-        except json.JSONDecodeError as exc:
-            raise ToolResultParseError("Tool result is not valid JSON") from exc
-
-        if not isinstance(parsed, dict):
-            raise ToolResultParseError("Tool result JSON must be an object")
+        if not isinstance(raw_result, dict):
+            raise ToolResultParseError("Tool result must be a JSON object")
 
         logger.debug(
             "backend tool result received",
@@ -169,22 +192,30 @@ class BackendToolsClient:
                 "tool_name": tool_name,
                 "tool_call_id": tool_call_id,
                 "elapsed_ms": int((time.perf_counter() - started) * 1000),
-                "result_keys": _safe_keys(parsed),
+                "result_keys": _safe_keys(raw_result),
             },
         )
-        return parsed
+        return raw_result
 
-    async def _default_post_json(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+    async def _default_post_json(
+        self,
+        url: str,
+        payload: dict[str, Any],
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
         def _send() -> dict[str, Any]:
             data = json.dumps(payload).encode("utf-8")
+            merged_headers = {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+            if isinstance(headers, dict) and headers:
+                merged_headers.update(headers)
             request = urllib.request.Request(
                 url=url,
                 data=data,
                 method="POST",
-                headers={
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                },
+                headers=merged_headers,
             )
             try:
                 with urllib.request.urlopen(request, timeout=self.timeout_s) as response:
@@ -212,4 +243,3 @@ class BackendToolsClient:
             return parsed
 
         return await asyncio.to_thread(_send)
-

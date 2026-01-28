@@ -1,5 +1,4 @@
 import os
-import json
 import asyncio
 import time
 from typing import Any
@@ -24,24 +23,28 @@ async def test_agent_preflight_then_business_turn_text_mode() -> None:
     calls: list[str] = []
     assistant_messages: list[str] = []
 
-    async def post_json(url: str, payload: dict[str, Any]) -> dict[str, Any]:
-        tool_call = payload["message"]["toolCallList"][0]
+    async def post_json(url: str, payload: dict[str, Any], *, headers: dict[str, str] | None = None) -> dict[str, Any]:
+        assert url == "https://example.test/tools"
+        assert isinstance(headers, dict)
+        assert headers.get("X-TOOLS-TOKEN") == "test-secret"
+
+        tool_call = payload["tool_calls"][0]
         tool_call_id = tool_call["id"]
-        tool_name = tool_call["function"]["name"]
-        tool_args = json.loads(tool_call["function"]["arguments"])
+        tool_name = tool_call["name"]
+        tool_args = tool_call["arguments"]
 
         calls.append(tool_name)
 
         if tool_name == "validate_phone":
             phone = tool_args.get("phone_number")
-            call_phone = payload["message"]["call"]["customer"]["number"]
+            call_phone = payload["call"]["customer"]["number"]
             assert call_phone == phone  # first send is unnormalized, right after confirmation
             formatted = phone
             if isinstance(phone, str) and phone.strip() and not phone.startswith("+"):
                 formatted = f"+1{phone}"
             result_obj = {"valid": True, "formatted": formatted}
         elif tool_name == "check_customer":
-            assert payload["message"]["call"]["customer"]["number"] == "+15551234567"
+            assert payload["call"]["customer"]["number"] == "+15551234567"
             result_obj = {"found": True, "next_action": "Proceed. Call handoff_to_ServiceCollection."}
         elif tool_name == "get_case_status":
             result_obj = {
@@ -54,9 +57,9 @@ async def test_agent_preflight_then_business_turn_text_mode() -> None:
         else:
             result_obj = {"ok": True}
 
-        return {"results": [{"toolCallId": tool_call_id, "result": json.dumps(result_obj)}]}
+        return {"results": [{"tool_call_id": tool_call_id, "name": tool_name, "ok": True, "result": result_obj}]}
 
-    backend = BackendToolsClient(tools_url="https://example.test/vapi/tools", post_json=post_json)
+    backend = BackendToolsClient(tools_url="https://example.test/tools", post_json=post_json, tools_token="test-secret")
 
     agent = VapiAdapterAgent(
         backend_client=backend,
@@ -125,10 +128,14 @@ async def test_tool_llm_failure_falls_back_to_prompt(monkeypatch: pytest.MonkeyP
 
     assistant_messages: list[str] = []
 
-    async def post_json(url: str, payload: dict[str, Any]) -> dict[str, Any]:
-        tool_call = payload["message"]["toolCallList"][0]
+    async def post_json(url: str, payload: dict[str, Any], *, headers: dict[str, str] | None = None) -> dict[str, Any]:
+        assert url == "https://example.test/tools"
+        assert isinstance(headers, dict)
+        assert headers.get("X-TOOLS-TOKEN") == "test-secret"
+
+        tool_call = payload["tool_calls"][0]
         tool_call_id = tool_call["id"]
-        tool_name = tool_call["function"]["name"]
+        tool_name = tool_call["name"]
 
         if tool_name == "get_case_status":
             result_obj = {
@@ -139,9 +146,9 @@ async def test_tool_llm_failure_falls_back_to_prompt(monkeypatch: pytest.MonkeyP
         else:
             result_obj = {"ok": True}
 
-        return {"results": [{"toolCallId": tool_call_id, "result": json.dumps(result_obj)}]}
+        return {"results": [{"tool_call_id": tool_call_id, "name": tool_name, "ok": True, "result": result_obj}]}
 
-    backend = BackendToolsClient(tools_url="https://example.test/vapi/tools", post_json=post_json)
+    backend = BackendToolsClient(tools_url="https://example.test/tools", post_json=post_json, tools_token="test-secret")
 
     agent = VapiAdapterAgent(
         backend_client=backend,

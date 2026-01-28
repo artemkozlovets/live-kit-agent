@@ -1,6 +1,6 @@
 # Debug LiveKit Cloud Agent Silence (Codex Context)
 
-> **Last Updated**: 2026-01-25  
+> **Last Updated**: 2026-01-28  
 > **Audience**: Codex (repo context)  
 > **Status**: Draft
 
@@ -10,10 +10,10 @@
 - **Where to change:**
   - STT/Deepgram config + session logging: [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L560)
   - Backend tools HTTP contract + errors: [`livekit_agent/backend_tools_client.py`](../../livekit_agent/backend_tools_client.py#L69)
-  - Backend `/vapi/tools` handler: [`api_server/vapi/router.py`](../../api_server/vapi/router.py#L42)
+  - Backend `/tools` handler: [`api_server/tools/router.py`](../../api_server/tools/router.py)
 - **How to verify:** dispatch a room + publish a known-good Ogg Opus sample via CLI (below), then confirm:
   - `lk agent logs` shows no `AgentSession error`
-  - Railway logs show `POST /vapi/tools` `200`
+  - Railway logs show `POST /tools` `200`
   - `lk room join --auto-subscribe` sees the agent publish an audio track
 
 ## Big picture
@@ -28,9 +28,10 @@ This runbook prioritizes fast isolation via `lk` + `railway`.
 ## Preconditions (this repo)
 - `livekit.toml` points `lk` at the intended project + agent: [`livekit.toml`](../../livekit.toml#L1)
 - LiveKit Cloud agent uses:
-  - Deepgram STT with `eager_eot_threshold`: [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L560)
+  - OpenAI Realtime by default (`AGENT_ENGINE=openai_realtime`)
+  - Deepgram STT + Cartesia TTS only when `AGENT_ENGINE=legacy`: [`livekit_agent/agent.py`](../../livekit_agent/agent.py)
   - Backend tools URL from `BACKEND_TOOLS_URL`: [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L551)
-- Railway runs the tools API (`POST /vapi/tools`): [`api_server/vapi/router.py`](../../api_server/vapi/router.py#L42)
+- Railway runs the tools API (`POST /tools`): [`api_server/tools/router.py`](../../api_server/tools/router.py)
 
 ## 1) Sanity check CLI + pointers
 ```bash
@@ -48,7 +49,7 @@ railway status
 
 Success signals:
 - `lk agent status` shows **Running**
-- `lk agent secrets` includes `BACKEND_TOOLS_URL`, `DEEPGRAM_API_KEY` (names only; values hidden)
+- `lk agent secrets` includes `BACKEND_TOOLS_URL`, `TOOLS_TOKEN`, and (for default engine) `OPENAI_API_KEY` (names only; values hidden)
 - `railway status` shows the expected Project/Env/Service
 
 ## 2) Reproduce with a CLI-only smoke test (Ogg Opus)
@@ -85,7 +86,7 @@ lk room join <ROOM> \
 
 Success signals:
 - In the `lk room join` output, you see `track subscribed ... participant agent-... kind audio`
-- In Railway logs (next section), you see `POST /vapi/tools` → `200 OK`
+- In Railway logs (next section), you see `POST /tools` → `200 OK`
 
 Notes:
 - If you use `--exit-after-publish`, you will disconnect immediately and the agent may close due to participant disconnect (expected in logs).
@@ -146,25 +147,26 @@ Fix knobs (agent secrets):
 
 ## 4) Railway logs: confirm tools traffic + backend errors
 ```bash
-railway logs --service "Call-agent" --environment development --lines 200 --filter "/vapi/tools"
+railway logs --service "Call-agent" --environment development --lines 200 --filter "/tools"
 railway logs --service "Call-agent" --environment development --lines 200 --filter "@level:error"
 ```
 
 High-signal patterns:
 
-### A) `/vapi/tools` returns 500 with `JSONDecodeError`
+### A) `/tools` returns 401 Unauthorized
 If Railway logs show:
-- `json.decoder.JSONDecodeError: Expecting value ...` at [`api_server/vapi/router.py`](../../api_server/vapi/router.py#L58)
+- `401 Unauthorized`
 
 Interpretation:
-- Something is calling `POST /vapi/tools` with an **empty or non-JSON body**.
-- The LiveKit agent should always send JSON (via `urllib`).
+- The caller is missing `X-TOOLS-TOKEN` or it doesn't match the backend `TOOLS_TOKEN`.
+- Check `lk agent secrets` (agent) and Railway env (backend) are set consistently.
+
+### B) `/tools` returns 400 Invalid JSON payload
+Interpretation:
+- Something is calling `POST /tools` with an empty or non-JSON body.
 - Check callers / health checks / any proxy that might be hitting the wrong path.
 
-Update (2026-01-25):
-- The backend now returns `400 Invalid JSON payload` (and logs a warning) instead of crashing with a 500.
-
-### B) `/vapi/tools` returns 500 for real tool errors
+### C) `/tools` returns 500 for real tool errors
 Interpretation:
 - The backend threw inside dispatch.
 - Narrow by time window and inspect stack traces in Railway logs.

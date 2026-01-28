@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 from fastapi.testclient import TestClient
 
@@ -28,38 +29,29 @@ def test_get_case_status_expected_field_city_persists_plain_answer(monkeypatch) 
 
     call_id = "call-expected-field-city"
     session_store.clear(call_id)
+    os.environ.setdefault("TOOLS_TOKEN", "test-secret")
 
     app.dependency_overrides[get_database_client] = lambda: FakeDatabaseClient()
     try:
         client = TestClient(app)
         payload = {
-            "message": {
-                "type": "tool-calls",
-                "call": {"id": call_id},
-                "toolCallList": [
-                    {
-                        "id": "tool-call-get-case-status-expected-field-city",
-                        "function": {
-                            "name": "get_case_status",
-                            "arguments": json.dumps(
-                                {
-                                    "call_id": call_id,
-                                    "last_user_message": "Dallas",
-                                    "expected_field": "city",
-                                }
-                            ),
-                        },
-                    }
-                ],
-                "assistant": {"extractedVariables": {}},
-            }
+            "call": {"id": call_id},
+            "tool_calls": [
+                {
+                    "id": "tool-call-get-case-status-expected-field-city",
+                    "name": "get_case_status",
+                    "arguments": {
+                        "last_user_message": "Dallas",
+                        "expected_field": "city",
+                    },
+                }
+            ],
         }
 
-        response = client.post("/vapi/tools", json=payload)
+        response = client.post("/tools", json=payload, headers={"X-TOOLS-TOKEN": "test-secret"})
         assert response.status_code == 200
 
         session = session_store.get(call_id)
         assert session["city"] == "Dallas"
     finally:
         app.dependency_overrides.pop(get_database_client, None)
-

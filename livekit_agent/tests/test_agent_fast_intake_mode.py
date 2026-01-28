@@ -1,5 +1,4 @@
 import os
-import json
 import asyncio
 import time
 from typing import Any
@@ -30,10 +29,14 @@ async def test_agent_fast_intake_greets_and_calls_get_case_status_on_first_turn(
     calls: list[str] = []
     assistant_messages: list[str] = []
 
-    async def post_json(url: str, payload: dict[str, Any]) -> dict[str, Any]:
-        tool_call = payload["message"]["toolCallList"][0]
+    async def post_json(url: str, payload: dict[str, Any], *, headers: dict[str, str] | None = None) -> dict[str, Any]:
+        assert url == "https://example.test/tools"
+        assert isinstance(headers, dict)
+        assert headers.get("X-TOOLS-TOKEN") == "test-secret"
+
+        tool_call = payload["tool_calls"][0]
         tool_call_id = tool_call["id"]
-        tool_name = tool_call["function"]["name"]
+        tool_name = tool_call["name"]
         calls.append(tool_name)
 
         if tool_name == "get_case_status":
@@ -45,9 +48,9 @@ async def test_agent_fast_intake_greets_and_calls_get_case_status_on_first_turn(
         else:
             result_obj = {"ok": True}
 
-        return {"results": [{"toolCallId": tool_call_id, "result": json.dumps(result_obj)}]}
+        return {"results": [{"tool_call_id": tool_call_id, "name": tool_name, "ok": True, "result": result_obj}]}
 
-    backend = BackendToolsClient(tools_url="https://example.test/vapi/tools", post_json=post_json)
+    backend = BackendToolsClient(tools_url="https://example.test/tools", post_json=post_json, tools_token="test-secret")
 
     agent = VapiAdapterAgent(
         backend_client=backend,
@@ -91,4 +94,3 @@ async def test_agent_fast_intake_greets_and_calls_get_case_status_on_first_turn(
             await asyncio.sleep(0.01)
 
         assert "What vehicle do you need service for?" in assistant_messages
-

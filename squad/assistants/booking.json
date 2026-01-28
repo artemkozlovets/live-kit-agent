@@ -61,7 +61,7 @@
     {
       "type": "function",
       "server": {
-        "url": "https://call-agent-development.up.railway.app/vapi/tools"
+        "url": "https://call-agent-development.up.railway.app/tools"
       },
       "function": {
         "name": "get_case_status",
@@ -103,7 +103,7 @@
     {
       "type": "function",
       "server": {
-        "url": "https://call-agent-development.up.railway.app/vapi/tools"
+        "url": "https://call-agent-development.up.railway.app/tools"
       },
       "function": {
         "name": "get_session_summary",
@@ -133,7 +133,7 @@
     {
       "type": "function",
       "server": {
-        "url": "https://call-agent-development.up.railway.app/vapi/tools"
+        "url": "https://call-agent-development.up.railway.app/tools"
       },
       "function": {
         "name": "store_service_order",
@@ -163,7 +163,7 @@
     {
       "type": "function",
       "server": {
-        "url": "https://call-agent-development.up.railway.app/vapi/tools"
+        "url": "https://call-agent-development.up.railway.app/tools"
       },
       "function": {
         "name": "send_confirmation_sms",

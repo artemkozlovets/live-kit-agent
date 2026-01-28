@@ -1,7 +1,7 @@
 # Feature Spec: openai_realtime
 
 > Created: 2026-01-27
-> Status: 🟡 Ready for Review
+> Status: 🟢 Implemented (2026-01-28)
 
 ---
 
@@ -180,14 +180,14 @@ Backend:
 ## Requirements
 
 ### Must-have
-- [ ] OpenAI Realtime is the default conversation engine.
-- [ ] LiveKit remains the transport for PSTN + web.
-- [ ] Backend exposes `POST /tools` with the v2 contract above.
-- [ ] `POST /tools` requires auth (`X-TOOLS-TOKEN` header, validated against `TOOLS_TOKEN`) and returns `401` when missing/invalid.
-- [ ] Calls complete end-to-end without `DEEPGRAM_API_KEY`, `CARTESIA_API_KEY`, or `GOOGLE_API_KEY`/`GEMINI_API_KEY` set.
-- [ ] Preserve slot-filling guardrails: **info dump → fill session → ask only missing → confirm at end → book**.
-- [ ] Backend enforces “no booking without explicit confirmation”.
-- [ ] Legacy `POST /vapi/tools` is removed after cutover (404) and `/vapi/*` references are cleaned up.
+- [x] OpenAI Realtime is the default conversation engine.
+- [x] LiveKit remains the transport for PSTN + web.
+- [x] Backend exposes `POST /tools` with the v2 contract above.
+- [x] `POST /tools` requires auth (`X-TOOLS-TOKEN` header, validated against `TOOLS_TOKEN`) and returns `401` when missing/invalid.
+- [x] Calls complete end-to-end without `DEEPGRAM_API_KEY`, `CARTESIA_API_KEY`, or `GOOGLE_API_KEY`/`GEMINI_API_KEY` set.
+- [x] Preserve slot-filling guardrails: **info dump → fill session → ask only missing → confirm at end → book**.
+- [x] Backend enforces “no booking without explicit confirmation”.
+- [x] Legacy `POST /vapi/tools` is removed after cutover (404) and `/vapi/*` references are cleaned up.
 
 ### Nice-to-have
 - [ ] Minimal trace/metrics per call (tool calls, interruptions, latency p50/p95).

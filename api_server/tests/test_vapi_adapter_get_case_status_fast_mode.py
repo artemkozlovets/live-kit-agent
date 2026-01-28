@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import os
 
 from fastapi.testclient import TestClient
 
@@ -36,34 +36,34 @@ def test_get_case_status_fast_extractor_runs_when_gemini_disabled(monkeypatch) -
     app.dependency_overrides[get_database_client] = lambda: FakeDatabaseClient()
     try:
         test_client = TestClient(app)
+        token = "test-secret"
+        previous_token = os.environ.get("TOOLS_TOKEN")
+        os.environ["TOOLS_TOKEN"] = token
         payload = {
-            "message": {
-                "type": "tool-calls",
-                "call": {"id": call_id},
-                "toolCallList": [
-                    {
-                        "id": "tool-call-get-case-status-fast-mode",
-                        "function": {
-                            "name": "get_case_status",
-                            "arguments": json.dumps(
-                                {
-                                    "call_id": call_id,
-                                    "last_user_message": "My last name is Johnson.",
-                                }
-                            ),
-                        },
-                    }
-                ],
-                "assistant": {"extractedVariables": {}},
-            }
+            "call": {"id": call_id},
+            "tool_calls": [
+                {
+                    "id": "tool-call-get-case-status-fast-mode",
+                    "name": "get_case_status",
+                    "arguments": {
+                        "call_id": call_id,
+                        "last_user_message": "My last name is Johnson.",
+                    },
+                }
+            ],
         }
 
-        response = test_client.post("/vapi/tools", json=payload)
+        response = test_client.post("/tools", json=payload, headers={"X-TOOLS-TOKEN": token})
         assert response.status_code == 200
-        parsed_result = json.loads(response.json()["results"][0]["result"])
+        response_data = response.json()
+        assert response_data["results"][0]["ok"] is True
+        parsed_result = response_data["results"][0]["result"]
 
         assert parsed_result["customer"]["last_name"] == "Johnson"
         assert parsed_result["missing_fields"] == ["first_name", "phone"]
     finally:
+        if previous_token is None:
+            os.environ.pop("TOOLS_TOKEN", None)
+        else:
+            os.environ["TOOLS_TOKEN"] = previous_token
         app.dependency_overrides.pop(get_database_client, None)
-

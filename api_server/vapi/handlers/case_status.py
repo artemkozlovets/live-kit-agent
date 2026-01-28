@@ -501,11 +501,24 @@ async def handle_get_case_status(
     # Performance note:
     # `get_case_status` runs on every turn, so any network calls here (Gemini, DB)
     # can cause multi-second tool latency and trigger filler speech in Vapi.
-    use_gemini_classification = _env_flag("GET_CASE_STATUS_GEMINI_CLASSIFICATION", True)
-    use_gemini_extraction = _env_flag("GET_CASE_STATUS_GEMINI_EXTRACTION", True)
-    use_gemini_corrections = _env_flag("GET_CASE_STATUS_GEMINI_CORRECTIONS", True)
-    use_fast_extractor = _env_flag("GET_CASE_STATUS_FAST_EXTRACTOR", False)
-    slot_filling = _env_flag("GET_CASE_STATUS_SLOT_FILLING", False)
+    tools_api_version = message_payload.get("_tools_api_version")
+    is_tools_v2 = tools_api_version == 2
+
+    if is_tools_v2:
+        # Reason: /tools is the OpenAI Realtime cutover path and must never require
+        # Gemini keys or incur Gemini latency, regardless of env flags.
+        use_gemini_classification = False
+        use_gemini_extraction = False
+        use_gemini_corrections = False
+        # Reason: Keep slot-filling deterministic for the agent by default (no network).
+        use_fast_extractor = True
+        slot_filling = True
+    else:
+        use_gemini_classification = _env_flag("GET_CASE_STATUS_GEMINI_CLASSIFICATION", True)
+        use_gemini_extraction = _env_flag("GET_CASE_STATUS_GEMINI_EXTRACTION", True)
+        use_gemini_corrections = _env_flag("GET_CASE_STATUS_GEMINI_CORRECTIONS", True)
+        use_fast_extractor = _env_flag("GET_CASE_STATUS_FAST_EXTRACTOR", False)
+        slot_filling = _env_flag("GET_CASE_STATUS_SLOT_FILLING", False)
 
     category = MessageCategory.NORMAL
     if last_user_message is not None:

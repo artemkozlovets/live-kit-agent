@@ -1,6 +1,6 @@
 # Debugging (Single Source of Truth)
 
-> **Last Updated**: 2026-01-25  
+> **Last Updated**: 2026-01-28  
 > **Audience**: Codex (repo context)  
 > **Status**: Draft
 
@@ -8,12 +8,12 @@
 This repo has **two services** (LiveKit agent + tools backend). Debugging is fastest when you **isolate the layer**:
 - **Web client** (browser / WebRTC connectivity)
 - **Agent runtime** (LiveKit Cloud worker logs)
-- **Backend tools** (`POST /vapi/tools` on Railway or local FastAPI)
+- **Backend tools** (`POST /tools` on Railway or local FastAPI)
 
 ## The one ID that ties everything together
 In this repo, **call_id == LiveKit room name**:
 - Agent call id: `ctx.room.name`
-- Backend call id: `message.call.id` (sent by the agent in tool-call payloads)
+- Backend call id: `call.id` (sent by the agent in tool-call payloads)
 
 Practical impact:
 - Use the **room name** when correlating agent logs, backend tool logs, and session reports.
@@ -218,12 +218,12 @@ Look for:
 Start with low-noise log filters:
 ```bash
 railway logs --lines 200 --filter "@level:error"
-railway logs --lines 200 --filter "/vapi/tools"
+railway logs --lines 200 --filter "/tools"
 ```
 If you need timestamps (best for correlating to a specific LiveKit room):
 ```bash
 railway logs --lines 200 --filter "@level:error" --json
-railway logs --lines 200 --filter "/vapi/tools" --json
+railway logs --lines 200 --filter "/tools" --json
 ```
 Docs:
 - `docs/instructions/pull-railway-logs.md`
@@ -244,7 +244,7 @@ These env vars increase signal or timing detail:
 When `LOCAL_OBSERVABILITY_DIR` is set:
 - Backend writes:
   - `backend.log.jsonl` (structured logs)
-  - `backend.tools.jsonl` (one JSONL event per `/vapi/tools` request with tool names + result keys)
+  - `backend.tools.jsonl` (one JSONL event per `/tools` request with tool names + result keys)
   - `session-reports/*.json` (persisted session reports ingested via `POST /observability/session-report`)
 - Agent writes:
   - `agent.log.jsonl` (structured logs)
@@ -296,9 +296,9 @@ Provide:
   **Likely cause:** Gemini tool-LLM timed out (often `APIStatusError ... status_code=504 DEADLINE_EXCEEDED`) while converting `then_action` → tool calls  
   **Where to look:** `lk agent logs --log-type deploy` for `tool LLM stream failed` / `then_action parsing failed`  
   **Fix:** increase `GOOGLE_LLM_TIMEOUT_S` (and/or switch `GOOGLE_LLM_MODEL`), then redeploy agent
-- **Symptom:** Railway shows `/vapi/tools` 500 with `json.decoder.JSONDecodeError`  
-  **Likely cause:** a caller hit `/vapi/tools` with an empty or non-JSON body  
-  **Fix:** backend now returns `400 Invalid JSON payload` (see `api_server/vapi/router.py`)
+- **Symptom:** Railway shows `/tools` 400 with `Invalid JSON payload`  
+  **Likely cause:** a caller hit `/tools` with an empty or non-JSON body  
+  **Fix:** ensure callers send a valid JSON body and include `X-TOOLS-TOKEN` (see `api_server/tools/router.py`)
 
 ## Related docs
 - `docs/documentations/livekit-agent.md`

@@ -17,7 +17,8 @@ export LOCAL_OBSERVABILITY_DIR="$RUN_DIR"
 export USE_IN_MEMORY_DB=1
 export LOG_LEVEL="${LOG_LEVEL:-DEBUG}"
 export VAPI_TOOLS_LOG_TIMING="${VAPI_TOOLS_LOG_TIMING:-1}"
-export BACKEND_TOOLS_URL="http://127.0.0.1:8000/vapi/tools"
+export TOOLS_TOKEN="${TOOLS_TOKEN:-test-secret}"
+export BACKEND_TOOLS_URL="http://127.0.0.1:8000/tools"
 export SESSION_REPORTS_URL="http://127.0.0.1:8000/observability/session-report"
 
 # Local UX defaults (override at invocation time if needed):

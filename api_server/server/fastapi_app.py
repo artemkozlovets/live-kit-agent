@@ -12,7 +12,7 @@ from api_server.server.routers.service_order import router as service_order_rout
 from api_server.server.routers.unit import router as unit_router
 from api_server.server.routers.validation import router as validation_router
 from api_server.observability.router import router as observability_router
-from api_server.vapi.router import vapi_router
+from api_server.tools.router import router as tools_router
 
 if not os.getenv("PYTEST_CURRENT_TEST"):
     load_dotenv()
@@ -100,7 +100,7 @@ if not os.getenv("PYTEST_CURRENT_TEST"):
 
 app = FastAPI()
 
-app.include_router(vapi_router, prefix="/vapi")
+app.include_router(tools_router)
 app.include_router(observability_router)
 app.include_router(validation_router)
 app.include_router(customer_router)

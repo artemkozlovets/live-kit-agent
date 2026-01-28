@@ -1,6 +1,7 @@
 # TDD Plan: Migrate Vapi → LiveKit (Milestone 1)
 
-> Based on: `docs/specs/migrate_vapi_to_livekit-spec.md`
+> Based on: `docs/migrate_vapi_to_livekit-spec.md`
+> Deprecated: this plan assumed `POST /vapi/tools`. This repo has now cut over to `POST /tools` (v2) and removed `POST /vapi/tools` (404). See `docs/specs/openai_realtime-spec.md` and `docs/openai_realtime-tdd-plan.md` instead.
 > Previous Vapi repo (for confirmation): `/Users/tom-long/jobs/dev_branch_tmp/Call-agent-squad`
 > Created: 2026-01-22
 > Last Updated: 2026-01-22
@@ -36,15 +37,15 @@ Goal: make it mechanically checkable that this plan covers the spec.
 
 | Spec requirement | Spec ref | Plan validation (test / manual) |
 | --- | --- | --- |
-| Inbound PSTN calls reach LiveKit rooms via SIP trunk + dispatch rule | [Spec: Telephony / inbound calls](../specs/migrate_vapi_to_livekit-spec.md#telephony--inbound-calls) | Manual smoke checklist (Phase 4) + staging call-through |
-| Agent joins inbound rooms and runs STT/LLM/TTS | [Spec: Target direction](../specs/migrate_vapi_to_livekit-spec.md#target-direction-hypothesis) | Manual smoke checklist (Phase 4) + agent startup/runbook |
-| Agent calls backend tools via `POST /vapi/tools` without changing backend contract | [Spec: Adapter contract](../specs/migrate_vapi_to_livekit-spec.md#adapter-contract-livekit-agent--post-vapitools-milestone-1) | Phase 1 payload builder unit tests + Phase 2 backend tools client unit tests |
-| Always confirm/collect callback number before “business flow” tools (Option A) | [Spec: Pre-flight gate](../specs/migrate_vapi_to_livekit-spec.md#pre-flight-gate-always-confirmcollect-callback-number) | Phase 0 agent gate unit test (no `get_case_status` until confirmed) |
-| Multi-step flow parity (intake → service collection → booking/confirmation) | [Spec: Deterministic loop](../specs/migrate_vapi_to_livekit-spec.md#recommended-control-loop-keep-it-deterministic) | Phase 4 deterministic text-mode acceptance test (stub `get_case_status` outputs → assert phase transitions) |
-| Postgres writes via `store_service_order` (service orders persist + session completes) | [Spec: Verification](../specs/migrate_vapi_to_livekit-spec.md#verification-what-working-means) | Existing backend tests (ex: `api_server/tests/test_vapi_adapter_step_7_store_service_order.py`) + manual smoke checklist (Phase 4) |
-| Tool names/schemas remain explicit and versioned in-repo | [Spec: Constraints / tools](../specs/migrate_vapi_to_livekit-spec.md#constraints--preferences) | Phase 3 schema loading test from `squad/assistants/*.json` |
-| Per-call correlation: `room.name == call_id` visible across logs + Postgres rows | [Spec: Call/session id](../specs/migrate_vapi_to_livekit-spec.md#decisions-so-far) | Phase 1 payload builder asserts `message.call.id`; manual smoke checklist confirms correlation across systems |
-| Vapi not required in runtime after cutover | [Spec: Migration strategy](../specs/migrate_vapi_to_livekit-spec.md#migration-strategy-phased--draft) | Manual cutover checklist + remove Vapi from call path |
+| Inbound PSTN calls reach LiveKit rooms via SIP trunk + dispatch rule | [Spec: Telephony / inbound calls](./migrate_vapi_to_livekit-spec.md#telephony--inbound-calls) | Manual smoke checklist (Phase 4) + staging call-through |
+| Agent joins inbound rooms and runs STT/LLM/TTS | [Spec: Target direction](./migrate_vapi_to_livekit-spec.md#target-direction-hypothesis) | Manual smoke checklist (Phase 4) + agent startup/runbook |
+| Agent calls backend tools via `POST /vapi/tools` without changing backend contract | [Spec: Adapter contract](./migrate_vapi_to_livekit-spec.md#adapter-contract-livekit-agent--post-vapitools-milestone-1) | Phase 1 payload builder unit tests + Phase 2 backend tools client unit tests |
+| Always confirm/collect callback number before “business flow” tools (Option A) | [Spec: Pre-flight gate](./migrate_vapi_to_livekit-spec.md#pre-flight-gate-always-confirmcollect-callback-number) | Phase 0 agent gate unit test (no `get_case_status` until confirmed) |
+| Multi-step flow parity (intake → service collection → booking/confirmation) | [Spec: Deterministic loop](./migrate_vapi_to_livekit-spec.md#recommended-control-loop-keep-it-deterministic) | Phase 4 deterministic text-mode acceptance test (stub `get_case_status` outputs → assert phase transitions) |
+| Postgres writes via `store_service_order` (service orders persist + session completes) | [Spec: Verification](./migrate_vapi_to_livekit-spec.md#verification-what-working-means) | Existing backend tests (ex: `api_server/tests/test_vapi_adapter_step_7_store_service_order.py`) + manual smoke checklist (Phase 4) |
+| Tool names/schemas remain explicit and versioned in-repo | [Spec: Constraints / tools](./migrate_vapi_to_livekit-spec.md#constraints--preferences) | Phase 3 schema loading test from `squad/assistants/*.json` |
+| Per-call correlation: `room.name == call_id` visible across logs + Postgres rows | [Spec: Call/session id](./migrate_vapi_to_livekit-spec.md#decisions-so-far) | Phase 1 payload builder asserts `message.call.id`; manual smoke checklist confirms correlation across systems |
+| Vapi not required in runtime after cutover | [Spec: Migration strategy](./migrate_vapi_to_livekit-spec.md#migration-strategy-phased--draft) | Manual cutover checklist + remove Vapi from call path |
 
 ---
 

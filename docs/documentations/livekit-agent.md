@@ -1,103 +1,65 @@
 # LiveKit Agent (Codex Context)
 
-> **Last Updated**: 2026-01-25  
+> **Last Updated**: 2026-01-28  
 > **Audience**: Codex (repo context)  
 > **Status**: Draft
 
 ## TL;DR
-- `livekit_agent/` runs a LiveKit Agents worker that **delegates decisions** to the backend tools server (`BACKEND_TOOLS_URL`).
-- Preflight must complete (callback phone → `validate_phone` → `check_customer`) before the agent will call `get_case_status`.
-- Main loop: call `get_case_status(last_user_message=...)` every user turn, then follow:
-  - `response_mode` ordering
-  - `immediate_message` (speech)
-  - `then_action` (tool calls)
+- `livekit_agent/` runs the LiveKit Agents worker.
+- **Default conversation engine:** OpenAI Realtime (`AGENT_ENGINE=openai_realtime`).
+- **Backend tools contract:** agent calls `POST /tools` (v2) with auth header `X-TOOLS-TOKEN` (env `TOOLS_TOKEN`).
+- **Rollback lever:** `AGENT_ENGINE=legacy` uses the previous Deepgram+Cartesia pipeline.
+- **How to verify:** `./scripts/test_all.sh`
 
-## Entry points / key files
-- Agent worker + LiveKit server setup: [`livekit_agent/agent.py`](../../livekit_agent/agent.py)
-- Deterministic state machine + response ordering: [`livekit_agent/flow_controller.py`](../../livekit_agent/flow_controller.py)
-- Backend HTTP + response parsing: [`livekit_agent/backend_tools_client.py`](../../livekit_agent/backend_tools_client.py)
-- Vapi-shaped request payload builder: [`livekit_agent/vapi_payload.py`](../../livekit_agent/vapi_payload.py)
-- Tool schema loader (from `squad/assistants/*.json`): [`livekit_agent/tools.py`](../../livekit_agent/tools.py)
-- Offline eval harness: [`livekit_agent/evals/`](../../livekit_agent/evals)
+## Key files (start here)
+- Worker entrypoint + engine selection: `livekit_agent/agent.py`
+- OpenAI Realtime agent logic (backend-first turn hook + tool forwarding): `livekit_agent/openai_realtime_agent.py`
+- OpenAI Realtime session factory (plugin import is lazy): `livekit_agent/openai_realtime_session.py`
+- Backend HTTP client + v2 result parsing: `livekit_agent/backend_tools_client.py`
+- Tools v2 payload builder: `livekit_agent/tools_v2_payload.py`
+- Deterministic flow controller (legacy pipeline): `livekit_agent/flow_controller.py`
+- Offline eval harness (no network): `livekit_agent/evals/`
 
-## Core loop (what happens on each turn)
-- **on_enter:** try to detect SIP phone number and start preflight. (`livekit_agent/agent.py`)
-- **Preflight:** collect callback number → call backend tools:
-  - `validate_phone(phone_number=...)`
-  - `check_customer(phone_number=...)`
-- **Business turn:** call `get_case_status(last_user_message=user_text)` and execute planned actions.
+## Runtime flow (happy path)
+1. LiveKit starts the agent worker (`python -m livekit_agent.agent ...`).
+2. `livekit_agent/agent.py` reads `AGENT_ENGINE`:
+   - `openai_realtime` (default): builds an OpenAI Realtime `AgentSession` and starts `OpenAIRealtimeAgent`.
+   - `legacy`: starts the previous Deepgram STT + Cartesia TTS pipeline with `VapiAdapterAgent`.
+3. During conversation:
+   - Agent calls backend `get_case_status(last_user_message=...)` on each user turn.
+   - Tool calls are forwarded to the backend via `BackendToolsClient.call_tool(...)`.
 
-## Contracts
+## Contract: backend tools (v2)
+- **URL:** `BACKEND_TOOLS_URL` (default ends with `/tools`)
+- **Auth:** header `X-TOOLS-TOKEN` must equal env `TOOLS_TOKEN`
+- **Response correlation:** results match by `tool_call_id`
 
-### Tool call request (agent → backend)
-Built by `build_vapi_tool_call_request(...)`:
-- File: [`livekit_agent/vapi_payload.py`](../../livekit_agent/vapi_payload.py)
-- Payload shape (high-level):
-  - `message.type = "tool-calls"`
-  - `message.call.id = <call_id>`
-  - `message.call.customer.number = <confirmed_callback_number>` (only when known)
-  - `message.customer.number = <sip_phone_number | None>`
-  - `message.toolCallList = [{id, function:{name, arguments:<json string>}}]`
-
-### Tool call response (backend → agent)
-Parsed by `BackendToolsClient.call_tool(...)`:
-- File: [`livekit_agent/backend_tools_client.py`](../../livekit_agent/backend_tools_client.py)
-- Required:
-  - top-level `results: list`
-  - an entry matching `toolCallId == <tool_call_id>`
-  - `result` is either:
-    - a dict (returned as-is), or
-    - a JSON string that parses to a dict
-
-### `then_action` execution
-The agent treats `then_action` as an *instruction string* that must be converted into tool calls.
-
-Two modes:
-- **With tool LLM** (`GOOGLE_API_KEY` set):
-  - First, try a deterministic parse for obvious patterns like `Call <tool>` (avoids flaky/slow LLM calls).
-  - If no obvious tools are found, stream tool calls and merge partial JSON args; ignore unknown tool names; fall back if none parsed.
-  - Tool LLM is only for *parsing instructions*, not for deciding what to do.
-  - The tool list excludes `get_case_status` (agent calls that deterministically).
-- **Without tool LLM:** regex fallback that extracts patterns like `Call add_service`.
+See `docs/documentations/api-server.md` for the full `/tools` contract and failure semantics.
 
 ## Configuration (env vars)
 
-### Required for real voice runs
+### Required (default OpenAI Realtime path)
 - `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`
-- `DEEPGRAM_API_KEY` (STT)
-- `DEEPGRAM_EAGER_EOT_THRESHOLD` (optional; must be a float in **0.3–0.9** or Deepgram can reject STT startup)
-- `BACKEND_TOOLS_URL` (defaults to a dev URL in `livekit_agent/agent.py`)
-  - Railway base: `https://call-agent-development.up.railway.app/`
-  - Set: `https://call-agent-development.up.railway.app/vapi/tools`
+- `BACKEND_TOOLS_URL` (should end with `/tools`)
+- `TOOLS_TOKEN` (shared secret for `X-TOOLS-TOKEN`)
+- `OPENAI_API_KEY`
 
-### Optional providers
-- `CARTESIA_API_KEY` (TTS)
-- `GOOGLE_API_KEY` + `GOOGLE_LLM_MODEL` (tool LLM for parsing `then_action`)
-- Tool LLM connection tuning:
-  - `GOOGLE_LLM_TIMEOUT_S` (defaults to `15.0`)
-  - `GOOGLE_LLM_MAX_RETRY` (defaults to `3`)
-  - `GOOGLE_LLM_RETRY_INTERVAL_S` (defaults to `2.0`)
+Optional:
+- `OPENAI_REALTIME_VOICE` (passed to `openai.realtime.RealtimeModel(...)`)
+- `AGENT_ENGINE` (defaults to `openai_realtime`; set to `legacy` to roll back)
 
-### Behavior / runtime
-- `LIVEKIT_AGENT_NAME` (dispatch filter)
-- `LOG_LEVEL`, `LOG_PII`
-- `SKIP_CALLBACK_PREFLIGHT` (bypass preflight only when no SIP number; sets callback to `"web"`)
-- Worker ports: `HOST`, `PORT`, `PROMETHEUS_PORT`, `PROMETHEUS_MULTIPROC_DIR`
+### Legacy-only (Deepgram+Cartesia path)
+These are only required when `AGENT_ENGINE=legacy`:
+- `DEEPGRAM_API_KEY` (+ optional `DEEPGRAM_STT_MODEL`, `DEEPGRAM_EAGER_EOT_THRESHOLD`)
+- `CARTESIA_API_KEY` (+ optional `CARTESIA_TTS_MODEL`, `CARTESIA_VOICE_ID`, `CARTESIA_SPEED`, `CARTESIA_TEXT_PACING`)
+- `GOOGLE_API_KEY` (optional: tool-LLM parsing for `then_action`)
 
-## Invariants / gotchas
-- **Preflight gate:** `FlowController.can_call_get_case_status` stays false until:
-  - a callback number is normalized/accepted, and
-  - customer check completes.
-- **Backend failure mode:** on backend errors, the agent speaks a single “trouble connecting” message and stops processing future turns.
-- **SIP phone detection:** agent reads SIP participant attributes (`sip.phoneNumber`) or identity formatted like `+1555...`.
-- **“Silent agent” gotcha:** if Deepgram STT fails at startup (for example, invalid `DEEPGRAM_EAGER_EOT_THRESHOLD`), the session can close before any response. The agent parses/clamps this value here: [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L560).
+## Verification
+- All tests: `./scripts/test_all.sh`
+- Agent-only tests: `.venv/bin/python -m pytest -q livekit_agent/tests`
 
-## Debugging (production / LiveKit Cloud)
-- Tail agent logs: `lk agent logs --log-type deploy`
-- Agent emits extra error/close context:
-  - `AgentSession error`: [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L660)
-  - `AgentSession closing`: [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L669)
-
-## Tests / evals
-- Default tests: `pytest.ini` targets `livekit_agent/tests`.
-- Offline eval suite (no network): `python -m livekit_agent.evals` (scenarios in `livekit_agent/evals/scenarios.py`).
+## Related docs
+- `docs/specs/openai_realtime-spec.md`
+- `docs/openai_realtime-tdd-plan.md`
+- `docs/documentations/api-server.md`
+- `docs/documentations/testing-and-evals.md`

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import os
 
 from fastapi.testclient import TestClient
 
@@ -48,32 +48,31 @@ def test_get_case_status_uses_payload_call_id_over_tool_args(monkeypatch) -> Non
     app.dependency_overrides[get_database_client] = lambda: FakeDatabaseClient()
     try:
         test_client = TestClient(app)
+        token = "test-secret"
+        previous_token = os.environ.get("TOOLS_TOKEN")
+        os.environ["TOOLS_TOKEN"] = token
         payload = {
-            "message": {
-                "type": "tool-calls",
-                "call": {"id": call_id},
-                "toolCallList": [
-                    {
-                        "id": "tool-call-get-case-status-call-id",
-                        "function": {
-                            "name": "get_case_status",
-                            "arguments": json.dumps(
-                                {
-                                    "call_id": placeholder_call_id,
-                                    "last_user_message": "My last name is Johnson.",
-                                }
-                            ),
-                        },
-                    }
-                ],
-                "assistant": {"extractedVariables": {}},
-            }
+            "call": {"id": call_id},
+            "tool_calls": [
+                {
+                    "id": "tool-call-get-case-status-call-id",
+                    "name": "get_case_status",
+                    "arguments": {
+                        "call_id": placeholder_call_id,
+                        "last_user_message": "My last name is Johnson.",
+                    },
+                }
+            ],
         }
 
-        response = test_client.post("/vapi/tools", json=payload)
+        response = test_client.post("/tools", json=payload, headers={"X-TOOLS-TOKEN": token})
 
         assert response.status_code == 200
         assert session_store.get(call_id).get("last_name") == "Johnson"
         assert session_store.get(placeholder_call_id) == {}
     finally:
+        if previous_token is None:
+            os.environ.pop("TOOLS_TOKEN", None)
+        else:
+            os.environ["TOOLS_TOKEN"] = previous_token
         app.dependency_overrides.pop(get_database_client, None)
