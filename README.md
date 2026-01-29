@@ -7,6 +7,11 @@ This repo runs a LiveKit voice agent using **OpenAI Realtime** as the conversati
 - FastAPI tools backend service (deploy to Railway): `api_server/`
 - Shared tool schemas (source of truth): `squad/assistants/*.json`
 
+## Start a remote call (LiveKit Cloud + Meet)
+See `docs/documentations/start-web-livekit-call.md` for:
+- Starting a basic Meet room (web call)
+- Dispatching this repo’s deployed agent into a new room, then joining via Meet
+
 ## What’s implemented
 - Backend tools client (async) with typed errors: `livekit_agent/backend_tools_client.py`
 - Provider-agnostic `/tools` v2 payload builder: `livekit_agent/tools_v2_payload.py`

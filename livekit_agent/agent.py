@@ -65,6 +65,24 @@ _LOG_RECORD_BUILTINS = {
 }
 
 
+def _register_openai_realtime_plugin_on_main_thread() -> None:
+    agent_engine = os.getenv("AGENT_ENGINE", "openai_realtime").strip().lower() or "openai_realtime"
+    if agent_engine in {"legacy", "vapi_adapter"}:
+        return
+
+    try:
+        # Reason: LiveKit plugins must be registered on the main thread. Importing here
+        # ensures the OpenAI plugin registers before worker threads start.
+        from livekit.plugins import openai  # noqa: F401
+    except Exception as exc:  # pragma: no cover
+        raise RuntimeError(
+            "OpenAI Realtime plugin not installed. Install `livekit-agents[openai]` to use /tools cutover."
+        ) from exc
+
+
+_register_openai_realtime_plugin_on_main_thread()
+
+
 class _JsonLogFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, Any] = {
