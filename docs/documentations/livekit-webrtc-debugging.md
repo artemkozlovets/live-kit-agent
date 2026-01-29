@@ -20,7 +20,9 @@ This doc is focused on debugging the WebRTC layer (browser/app connectivity + me
 ## 0) Always isolate: LiveKit vs your app
 1. Get your LiveKit **Project URL** (`wss://...`) from LiveKit Cloud project settings (or use `ws://localhost:7880` for local dev).
 2. Generate a **join token** (see below).
-3. Join via LiveKit Meet: `https://meet.livekit.io` → **Custom** tab → paste `serverUrl` + token.
+3. Join via LiveKit Meet:
+   - Recommended: use a **full Meet link**: `https://meet.livekit.io/custom?liveKitUrl=<WS_URL>&token=<JWT>`
+   - Fallback: open LiveKit Meet → **Custom** tab → paste `serverUrl` + token.
 
 Interpretation:
 - **Meet fails** with the same URL/token → fix URL/token/network first (not your app).
@@ -56,9 +58,17 @@ lk token create \
   --valid-for 1h
 ```
 
-Then use:
-- Server URL: your LiveKit Cloud **Project URL** (`wss://...`)
-- Token: the CLI output
+Or (recommended): print a **full Meet link** you can click/share:
+```bash
+ROOM="debug-room"
+IDENTITY="debug-user"
+
+OUT="$(lk token create --join --room "$ROOM" --identity "$IDENTITY" --valid-for 1h)"
+LIVEKIT_URL="$(printf "%s\n" "$OUT" | rg '^Project URL:' | awk '{print $3}')"
+TOKEN="$(printf "%s\n" "$OUT" | rg '^Access token:' | awk '{print $3}')"
+
+echo "https://meet.livekit.io/custom?liveKitUrl=${LIVEKIT_URL}&token=${TOKEN}"
+```
 
 ## 2) Diagnose “can’t connect” (network / TURN / firewall)
 

@@ -28,7 +28,6 @@ Pick one:
 
 ```bash
 lk token create \
-  --api-key <PROJECT_KEY> --api-secret <PROJECT_SECRET> \
   --join --room demo-room --identity demo-user \
   --valid-for 24h
 ```
@@ -37,20 +36,29 @@ Notes:
 - `--room` is the room name (any string).
 - `--identity` must be **unique per participant**.
 - If you open a second tab, generate a **second token** with a different identity.
+- If you don’t have `LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET` configured, pass `--api-key`/`--api-secret` explicitly.
 
 ### 3) Join in LiveKit Meet
-1. Open LiveKit Meet in the browser.
-2. Choose the **Custom** tab.
-3. Paste your **Server URL** and **Token**.
-4. Click **Connect** and allow mic/camera permissions.
+Recommended: generate a **full Meet link** (skips the pre-join UI):
+```bash
+ROOM="demo-room"
+IDENTITY="demo-user"
 
-Alternative (full link, skips the pre-join UI):
+OUT="$(lk token create --join --room "$ROOM" --identity "$IDENTITY" --valid-for 1h)"
+LIVEKIT_URL="$(printf "%s\n" "$OUT" | rg '^Project URL:' | awk '{print $3}')"
+TOKEN="$(printf "%s\n" "$OUT" | rg '^Access token:' | awk '{print $3}')"
+
+echo "https://meet.livekit.io/custom?liveKitUrl=${LIVEKIT_URL}&token=${TOKEN}"
 ```
-https://meet.livekit.io/custom?liveKitUrl=<WS_URL>&token=<JWT>
-```
+
+Fallback (manual UI):
+1. Open LiveKit Meet
+2. Choose the **Custom** tab
+3. Paste `serverUrl` + token
+4. Click **Connect** and allow mic/camera permissions
 
 Notes:
-- URL-encode the token if your browser mangles it.
+- URL-encode the token if your browser mangles it (rare).
 - This is convenient for dev; don’t share links with long-lived tokens.
 
 ## Quick troubleshooting

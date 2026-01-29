@@ -12,6 +12,7 @@ This runbook is the smallest checklist to prove the stack is healthy end-to-end,
 ## Preconditions (must be true)
 - Backend has `TOOLS_TOKEN` set (agent ↔ backend shared secret).
 - Agent has `OPENAI_API_KEY`, `BACKEND_TOOLS_URL` (ends with `/tools`), and `TOOLS_TOKEN` set.
+- Optional: set `AGENT_BACKEND_GUARDRAILS=false` to run an **OpenAI-first** flow (no `get_case_status` call each turn).
 - Optional but recommended: session report pipeline configured (see `docs/documentations/debug.md`).
 
 ## 1) Backend smoke: `/tools` works + auth enforced

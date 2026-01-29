@@ -40,6 +40,7 @@ Environment variables:
 - `TOOLS_TOKEN` (shared secret header used by the agent to call `POST /tools`)
 - `OPENAI_API_KEY`
 - `AGENT_ENGINE` (optional: defaults to `openai_realtime`; set to `legacy` to use the old Deepgram+Cartesia pipeline)
+- `AGENT_BACKEND_GUARDRAILS` (optional: defaults to `true`; set to `false` to let OpenAI manage the flow without calling `get_case_status` every turn)
 
 Run in console mode (local, no telephony):
 ```bash

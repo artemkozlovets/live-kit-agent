@@ -134,6 +134,21 @@ def _float_env(name: str) -> float | None:
         return None
 
 
+def _bool_env(name: str, *, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+
+    value = raw.strip().lower()
+    if value in {"1", "true", "yes", "y", "on"}:
+        return True
+    if value in {"0", "false", "no", "n", "off"}:
+        return False
+
+    logger.warning("Invalid %s=%r (expected boolean); using default=%s", name, raw, default)
+    return default
+
+
 def _build_server() -> AgentServer:
     kwargs: dict[str, Any] = {}
     host = os.getenv("HOST", "").strip() or os.getenv("LIVEKIT_WORKER_HOST", "").strip()
@@ -1132,6 +1147,7 @@ async def entrypoint(ctx: JobContext) -> None:
         from livekit_agent.openai_realtime_session import build_openai_realtime_session  # noqa: WPS433
 
         voice = os.getenv("OPENAI_REALTIME_VOICE", "").strip() or None
+        use_backend_guardrails = _bool_env("AGENT_BACKEND_GUARDRAILS", default=True)
 
         logger.info(
             "starting agent session",
@@ -1139,6 +1155,7 @@ async def entrypoint(ctx: JobContext) -> None:
                 "agent_engine": agent_engine,
                 "backend_tools_url": backend_tools_url,
                 "openai_realtime_voice": voice,
+                "use_backend_guardrails": use_backend_guardrails,
                 "has_openai_api_key": bool(os.getenv("OPENAI_API_KEY")),
             },
         )
@@ -1146,6 +1163,7 @@ async def entrypoint(ctx: JobContext) -> None:
         session = build_openai_realtime_session(voice=voice)
         agent = OpenAIRealtimeAgent(
             backend_client=BackendToolsClient(tools_url=backend_tools_url),
+            use_backend_guardrails=use_backend_guardrails,
             call_id_fallback=ctx.room.name,
         )
 

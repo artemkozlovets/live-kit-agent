@@ -78,6 +78,18 @@ Cons:
 - Two processes to manage.
 - In-memory mode differs from Postgres (state is lost on restart).
 
+Use the Railway Postgres DB locally (when debugging customer lookup / DB issues):
+```bash
+# Runs the backend locally, but loads DATABASE_URL (and other vars) from Railway.
+# Note: this does NOT print the variables; it just injects them into the process.
+railway run --service "Call-agent" --environment development \
+  .venv/bin/python -m uvicorn api_server.server.fastapi_app:app --host 127.0.0.1 --port 8000
+```
+
+Notes:
+- Your local agent still needs `TOOLS_TOKEN` to match the backend, and `OPENAI_API_KEY` if using OpenAI Realtime.
+- If you want a DB shell without exporting secrets, use `railway connect` (Postgres → `psql`).
+
 Local observability add-on (recommended):
 ```bash
 export LOCAL_OBSERVABILITY_DIR="./local-observability/manual"
