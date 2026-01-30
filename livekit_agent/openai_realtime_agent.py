@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import os
 import re
 import uuid
 from typing import Any
 
+from livekit import rtc
 from livekit.agents import Agent, ChatContext, function_tool
 
 from livekit_agent.backend_tools_client import BackendToolsClientError
@@ -91,7 +94,7 @@ class OpenAIRealtimeAgent(Agent):
 
         super().__init__(
             instructions=(
-                "You are Grace, a helpful voice agent for American Fleet Services (AFS).\n"
+                "You are Sarah, a helpful voice agent for American Fleet Services (AFS).\n"
                 "\n"
                 "Conversation style:\n"
                 "- The caller may give a large info-dump (name, phone, address, etc.) in any order.\n"
@@ -120,6 +123,131 @@ class OpenAIRealtimeAgent(Agent):
         self._validated_phone_number = confirmed_callback_number
         self._customer_checked = False
         self._fatal_error = False
+        self._did_phone_greeting = False
+
+    def _build_phone_greeting(self, *, first_name: str | None, caller_phone: str | None) -> str:
+        operator_name = os.getenv("AGENT_OPERATOR_NAME", "").strip() or "Sarah"
+        company = os.getenv("AGENT_COMPANY_NAME", "").strip() or "AFS"
+
+        phone = caller_phone.strip() if isinstance(caller_phone, str) and caller_phone.strip() else None
+
+        if isinstance(first_name, str) and first_name.strip():
+            name = first_name.strip()
+            if phone:
+                return (
+                    f"Say exactly: Hello {name}, this is {operator_name} from {company}. "
+                    f"I have your number as {phone}. Is this still the best number to reach you?"
+                )
+            return (
+                f"Say exactly: Hello {name}, this is {operator_name} from {company}. "
+                "Is this still the best number to reach you?"
+            )
+
+        return f"Say exactly: Hello, this is {operator_name} from {company}. How can I help you today?"
+
+    def _refresh_sip_phone_number_from_room(self) -> None:
+        """Best-effort extraction of caller ID from the active room.
+
+        Reason: For telephony dispatch, the SIP participant can join slightly
+        after the agent starts; extracting once in entrypoint can race.
+        """
+
+        if isinstance(self._sip_phone_number, str) and self._sip_phone_number.strip():
+            return
+
+        room = getattr(self.session, "room", None)
+        if not isinstance(room, rtc.Room):
+            return
+
+        for participant in room.remote_participants.values():
+            if getattr(participant, "kind", None) != rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
+                continue
+
+            attrs = participant.attributes or {}
+            phone = attrs.get("sip.phoneNumber")
+            if isinstance(phone, str) and phone.strip():
+                self._sip_phone_number = phone.strip()
+                return
+
+            identity = getattr(participant, "identity", "")
+            if isinstance(identity, str):
+                candidate = identity.strip()
+                if candidate.startswith("+") and candidate[1:].isdigit():
+                    self._sip_phone_number = candidate
+                    return
+
+                match = re.search(r"(\\+\\d{8,15})", candidate)
+                if match:
+                    self._sip_phone_number = match.group(1)
+                    return
+
+    async def on_enter(self) -> None:
+        """Greet inbound SIP callers immediately, using caller ID lookup when possible."""
+
+        if self._did_phone_greeting:
+            return
+        self._did_phone_greeting = True
+
+        # Avoid running the greeting in unit tests that use a bare AgentSession()
+        # (no LLM configured). If tests want to validate greeting behavior they
+        # can patch `session.generate_reply`, in which case this check won't skip.
+        llm = getattr(self.session, "llm", None)
+        if llm is None:
+            generate_reply = getattr(self.session, "generate_reply", None)
+            bound_func = getattr(generate_reply, "__func__", None)
+            original = getattr(type(self.session), "generate_reply", None)
+            if bound_func is not None and bound_func is original:
+                return
+
+        # We only auto-greet inbound phone calls.
+        # Reason: Avoid surprising behavior in non-telephony contexts (console/dev/tests).
+        room = getattr(self.session, "room", None)
+        has_room = isinstance(room, rtc.Room)
+        if not has_room and not (isinstance(self._sip_phone_number, str) and self._sip_phone_number.strip()):
+            return
+
+        if has_room:
+            # Best-effort wait: SIP participant can join right as the agent starts.
+            for _ in range(10):
+                self._refresh_sip_phone_number_from_room()
+                if isinstance(self._sip_phone_number, str) and self._sip_phone_number.strip():
+                    break
+                await asyncio.sleep(0.1)
+
+        caller_phone = self._sip_phone_number.strip() if isinstance(self._sip_phone_number, str) else None
+        if not caller_phone and has_room:
+            has_sip_participant = any(
+                getattr(p, "kind", None) == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
+                for p in room.remote_participants.values()
+            )
+            if has_sip_participant:
+                self.session.generate_reply(
+                    instructions=self._build_phone_greeting(first_name=None, caller_phone=None)
+                )
+            return
+
+        if not caller_phone:
+            return
+
+        first_name: str | None = None
+        try:
+            # Reason: Warm the backend session using the caller ID so we can greet by name.
+            # Use whitespace so `get_case_status` treats it as "no user message" and doesn't run extractors.
+            case_status = await self._call_backend_tool(
+                tool_name="get_case_status",
+                tool_arguments={"last_user_message": " "},
+            )
+        except BackendToolsClientError:
+            self.session.generate_reply(instructions=self._build_phone_greeting(first_name=None, caller_phone=caller_phone))
+            return
+
+        customer = case_status.get("customer") if isinstance(case_status, dict) else None
+        if isinstance(customer, dict):
+            candidate = customer.get("first_name")
+            if isinstance(candidate, str) and candidate.strip():
+                first_name = candidate.strip()
+
+        self.session.generate_reply(instructions=self._build_phone_greeting(first_name=first_name, caller_phone=caller_phone))
 
     @property
     def call_id(self) -> str:

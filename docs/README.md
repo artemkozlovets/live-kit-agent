@@ -18,5 +18,6 @@ This folder is documentation optimized for *Codex-style codebase work*: fast ret
 Recommended starting points:
 - [`docs/instructions/openai-realtime-rollout.md`](instructions/openai-realtime-rollout.md)
 - [`docs/instructions/verify-railway-livekit-sync.md`](instructions/verify-railway-livekit-sync.md)
+- [`docs/instructions/livekit-telephony-inbound-calls.md`](instructions/livekit-telephony-inbound-calls.md)
 - [`docs/instructions/pull-railway-logs.md`](instructions/pull-railway-logs.md)
 - [`docs/instructions/debug-livekit-agent-silence.md`](instructions/debug-livekit-agent-silence.md)

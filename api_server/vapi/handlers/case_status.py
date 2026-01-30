@@ -251,6 +251,14 @@ def _get_caller_phone_number(message_payload: dict[str, Any]) -> str | None:
             number = call_customer.get("number")
             if isinstance(number, str) and number.strip():
                 return number.strip()
+    # Tools v2 payloads can provide the caller ID at the top-level `customer.number`
+    # (raw/unconfirmed). Prefer `call.customer.number` when present, but fall back
+    # to the raw number so we can greet/lookup by caller ID on inbound calls.
+    customer_payload = message_payload.get("customer")
+    if isinstance(customer_payload, dict):
+        number = customer_payload.get("number")
+        if isinstance(number, str) and number.strip():
+            return number.strip()
     return None
 
 

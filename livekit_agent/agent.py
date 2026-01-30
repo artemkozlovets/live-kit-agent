@@ -166,8 +166,15 @@ def _extract_sip_phone_number(room: rtc.Room) -> str | None:
             return phone.strip()
 
         identity = getattr(participant, "identity", "")
-        if isinstance(identity, str) and identity.strip().startswith("+") and identity.strip()[1:].isdigit():
-            return identity.strip()
+        if isinstance(identity, str):
+            candidate = identity.strip()
+            if candidate.startswith("+") and candidate[1:].isdigit():
+                return candidate
+
+            # Some SIP participants use an identity like `sip_+13053179840`.
+            match = re.search(r"(\+\d{8,15})", candidate)
+            if match:
+                return match.group(1)
 
     return None
 
@@ -294,4 +301,3 @@ if __name__ == "__main__":
     _maybe_enable_local_file_logging()
     _register_openai_realtime_plugin_on_main_thread()
     cli.run_app(server)
-
