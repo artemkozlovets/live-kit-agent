@@ -1,6 +1,6 @@
 # Debugging (Single Source of Truth)
 
-> **Last Updated**: 2026-01-28  
+> **Last Updated**: 2026-01-30  
 > **Audience**: Codex (repo context)  
 > **Status**: Draft
 
@@ -365,9 +365,9 @@ Provide:
 - Railway log snippet (filtered) or agent log excerpt
 
 ## Failure modes / gotchas (high-signal)
-- **Symptom:** agent responses get cancelled or feel “stuck” mid-turn  
-  **Likely cause:** barge-in/echo (speaker output re-triggers the mic)  
-  **Fix:** use headphones, lower speaker volume, verify input/output devices (`python -m livekit_agent.agent console --list-devices`)
+- **Symptom:** agent sounds like it is "talking to itself" / constantly interrupts / responses get cancelled (can feel like "two agents")  
+  **Likely cause:** barge-in/echo (most common: mobile speakerphone or laptop speakers causing the agent's audio to re-trigger the mic)  
+  **Fix:** turn off speakerphone, use headphones/earpiece, lower volume, verify input/output devices (`python -m livekit_agent.agent console --list-devices`)
 - **Symptom:** Railway shows `/tools` 400 with `Invalid JSON payload`  
   **Likely cause:** a caller hit `/tools` with an empty or non-JSON body  
   **Fix:** ensure callers send a valid JSON body and include `X-TOOLS-TOKEN` (see `api_server/tools/router.py`)

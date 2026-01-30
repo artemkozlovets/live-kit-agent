@@ -105,6 +105,19 @@ Why this matters:
   - the room audio output is subscribed/published (RoomIO subscribed future is done).
 - Alternative: trigger greeting on `room.on("participant_connected", ...)` when the SIP participant joins, and only greet once.
 
+## Common gotcha: “two agents talking” / interruptions on speakerphone (mobile)
+If an inbound call sounds like the agent is **talking to itself**, interrupting constantly, or the flow feels choppy:
+
+**Likely cause:** you're using **speakerphone** and the phone's mic is picking up the agent's own audio (echo/feedback). With OpenAI Realtime + VAD/barge-in, that echo is treated like new user speech and can cancel/interrupt the agent mid-sentence.
+
+**What this looks like:**
+- The greeting gets cut off (so you might not hear the "I have your number as ..." line).
+- It can feel like "two agents" because the agent keeps reacting to its own audio.
+
+**Fix (recommended):**
+- Turn off speakerphone; use the handset earpiece or headphones.
+- Lower volume and keep the mic away from the speaker if you must go hands-free.
+
 ## Verification (what to run + what “good” looks like)
 
 ### Happy path: routing + join
@@ -146,4 +159,3 @@ Start here:
 - [`docs/specs/openai_realtime-spec.md`](../specs/openai_realtime-spec.md)
 - [`docs/instructions/debug-livekit-agent-silence.md`](debug-livekit-agent-silence.md)
 - [`docs/instructions/verify-railway-livekit-sync.md`](verify-railway-livekit-sync.md)
-
