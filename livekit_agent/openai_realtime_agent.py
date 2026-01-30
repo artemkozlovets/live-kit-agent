@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import re
 import uuid
@@ -12,6 +13,8 @@ from livekit.agents import Agent, ChatContext, function_tool
 
 from livekit_agent.backend_tools_client import BackendToolsClientError
 from livekit_agent.tools import load_tool_schemas
+
+logger = logging.getLogger("livekit-agent.openai-realtime")
 
 
 _PHONE_AFTER_LABEL_RE = re.compile(
@@ -125,6 +128,40 @@ class OpenAIRealtimeAgent(Agent):
         self._fatal_error = False
         self._did_phone_greeting = False
 
+    def _get_session_room(self) -> rtc.Room | None:
+        """Safely fetch the active rtc.Room for this session.
+
+        Reason: AgentSession exposes the active room via `session.room_io.room`
+        (not `session.room`). Accessing `session.room_io` can raise when the
+        session wasn't started with a room (tests/console).
+        """
+
+        try:
+            room_io = self.session.room_io
+        except Exception:
+            return None
+
+        room = getattr(room_io, "room", None)
+        return room if isinstance(room, rtc.Room) else None
+
+    def _get_session_room_io_subscribed_fut(self) -> asyncio.Future[None] | None:
+        """Best-effort handle to the RoomIO audio subscription future."""
+
+        try:
+            room_io = self.session.room_io
+        except Exception:
+            return None
+
+        subscribed = getattr(room_io, "subscribed_fut", None)
+        return subscribed if isinstance(subscribed, asyncio.Future) else None
+
+    @staticmethod
+    def _is_sip_participant(participant: object) -> bool:
+        return (
+            getattr(participant, "kind", None)
+            == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
+        )
+
     def _build_phone_greeting(self, *, first_name: str | None, caller_phone: str | None) -> str:
         operator_name = os.getenv("AGENT_OPERATOR_NAME", "").strip() or "Sarah"
         company = os.getenv("AGENT_COMPANY_NAME", "").strip() or "AFS"
@@ -155,12 +192,12 @@ class OpenAIRealtimeAgent(Agent):
         if isinstance(self._sip_phone_number, str) and self._sip_phone_number.strip():
             return
 
-        room = getattr(self.session, "room", None)
-        if not isinstance(room, rtc.Room):
+        room = self._get_session_room()
+        if room is None:
             return
 
         for participant in room.remote_participants.values():
-            if getattr(participant, "kind", None) != rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
+            if not self._is_sip_participant(participant):
                 continue
 
             attrs = participant.attributes or {}
@@ -176,17 +213,46 @@ class OpenAIRealtimeAgent(Agent):
                     self._sip_phone_number = candidate
                     return
 
-                match = re.search(r"(\\+\\d{8,15})", candidate)
+                match = re.search(r"(\+\d{8,15})", candidate)
                 if match:
                     self._sip_phone_number = match.group(1)
                     return
 
+    async def _wait_for_room_audio_subscription(self, timeout_s: float) -> None:
+        fut = self._get_session_room_io_subscribed_fut()
+        if fut is None or fut.done():
+            return
+
+        try:
+            await asyncio.wait_for(asyncio.shield(fut), timeout=timeout_s)
+        except TimeoutError:
+            logger.warning("timed out waiting for room audio subscription on enter")
+
+    async def _wait_for_sip_participant(self, room: rtc.Room, timeout_s: float) -> object | None:
+        for participant in room.remote_participants.values():
+            if self._is_sip_participant(participant):
+                return participant
+
+        loop = asyncio.get_running_loop()
+        fut: asyncio.Future[object] = loop.create_future()
+
+        def _on_connected(participant: object) -> None:
+            if self._is_sip_participant(participant) and not fut.done():
+                fut.set_result(participant)
+
+        room.on("participant_connected", _on_connected)
+        try:
+            return await asyncio.wait_for(fut, timeout=timeout_s)
+        except TimeoutError:
+            return None
+        finally:
+            try:
+                room.off("participant_connected", _on_connected)
+            except Exception:
+                pass
+
     async def on_enter(self) -> None:
         """Greet inbound SIP callers immediately, using caller ID lookup when possible."""
-
-        if self._did_phone_greeting:
-            return
-        self._did_phone_greeting = True
 
         # Avoid running the greeting in unit tests that use a bare AgentSession()
         # (no LLM configured). If tests want to validate greeting behavior they
@@ -199,28 +265,40 @@ class OpenAIRealtimeAgent(Agent):
             if bound_func is not None and bound_func is original:
                 return
 
+        if self._did_phone_greeting:
+            return
+
         # We only auto-greet inbound phone calls.
         # Reason: Avoid surprising behavior in non-telephony contexts (console/dev/tests).
-        room = getattr(self.session, "room", None)
-        has_room = isinstance(room, rtc.Room)
+        room = self._get_session_room()
+        has_room = room is not None
         if not has_room and not (isinstance(self._sip_phone_number, str) and self._sip_phone_number.strip()):
             return
 
-        if has_room:
-            # Best-effort wait: SIP participant can join right as the agent starts.
-            for _ in range(10):
+        if has_room and room is not None:
+            # Ensure the caller can actually hear the first greeting.
+            await self._wait_for_room_audio_subscription(timeout_s=15.0)
+
+            sip_participant = await self._wait_for_sip_participant(room, timeout_s=15.0)
+            if sip_participant is None:
+                # Not a telephony call (no SIP participant); don't greet.
+                return
+
+            # Best-effort wait: SIP participant attributes can arrive just after connection.
+            for _ in range(50):
                 self._refresh_sip_phone_number_from_room()
                 if isinstance(self._sip_phone_number, str) and self._sip_phone_number.strip():
                     break
                 await asyncio.sleep(0.1)
 
         caller_phone = self._sip_phone_number.strip() if isinstance(self._sip_phone_number, str) else None
-        if not caller_phone and has_room:
+        if not caller_phone and has_room and room is not None:
             has_sip_participant = any(
-                getattr(p, "kind", None) == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
+                self._is_sip_participant(p)
                 for p in room.remote_participants.values()
             )
             if has_sip_participant:
+                self._did_phone_greeting = True
                 self.session.generate_reply(
                     instructions=self._build_phone_greeting(first_name=None, caller_phone=None)
                 )
@@ -238,6 +316,7 @@ class OpenAIRealtimeAgent(Agent):
                 tool_arguments={"last_user_message": " "},
             )
         except BackendToolsClientError:
+            self._did_phone_greeting = True
             self.session.generate_reply(instructions=self._build_phone_greeting(first_name=None, caller_phone=caller_phone))
             return
 
@@ -247,14 +326,16 @@ class OpenAIRealtimeAgent(Agent):
             if isinstance(candidate, str) and candidate.strip():
                 first_name = candidate.strip()
 
+        self._did_phone_greeting = True
         self.session.generate_reply(instructions=self._build_phone_greeting(first_name=first_name, caller_phone=caller_phone))
 
     @property
     def call_id(self) -> str:
-        room = getattr(self.session, "room", None)
-        room_name = getattr(room, "name", None)
-        if isinstance(room_name, str) and room_name.strip():
-            return room_name
+        room = self._get_session_room()
+        if room is not None:
+            room_name = getattr(room, "name", None)
+            if isinstance(room_name, str) and room_name.strip():
+                return room_name
         return self._call_id_fallback
 
     async def _call_backend_tool(self, *, tool_name: str, tool_arguments: dict[str, Any]) -> dict[str, Any]:
