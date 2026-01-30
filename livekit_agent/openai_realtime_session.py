@@ -23,7 +23,22 @@ def build_openai_realtime_session(*, modalities: list[str] | None = None, voice:
         kwargs["modalities"] = list(modalities)
     if isinstance(voice, str) and voice.strip():
         kwargs["voice"] = voice.strip()
+    # Reason: We rely on the agent hooks (on_enter/on_user_turn_completed) to decide
+    # when to speak (including backend-first tool calls). Disable OpenAI's automatic
+    # response creation so the model doesn't generate replies on VAD events before
+    # our code can inject case status / guardrails.
+    try:
+        from openai.types.beta.realtime.session import TurnDetection  # type: ignore
+
+        kwargs["turn_detection"] = TurnDetection(
+            type="semantic_vad",
+            eagerness="auto",
+            create_response=False,
+            interrupt_response=False,
+        )
+    except Exception:  # pragma: no cover
+        # If TurnDetection isn't available for some reason, fall back to plugin defaults.
+        pass
 
     llm = openai.realtime.RealtimeModel(**kwargs)
     return AgentSession(llm=llm)
-

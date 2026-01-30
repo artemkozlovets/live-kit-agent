@@ -198,6 +198,73 @@ If you need more than logs and session reports:
 This repo does not wire those exports by default, but it's the next step if you
 want "real observability" outside the LiveKit UI.
 
+## Voice + turn-taking observability (Realtime)
+This repo is currently **good at plumbing checks** (agent deployed, joins room, backend `/tools` calls succeed),
+but voice issues need **turn-level artifacts** to debug reliably:
+- The agent "talks to itself" (echo / phantom turns).
+- The first greeting gets cut off (barge-in / false interruption).
+- Turn detection feels laggy or cancels responses.
+
+### Option 1: Session reports (post-call, no UI)
+Session reports are the highest signal per call because they include:
+- events (agent_state, user_state, transcripts, interruptions)
+- chat history (user + assistant messages with `interrupted: true/false`)
+- Realtime metrics (including `ttft`)
+
+If `SESSION_REPORTS_URL` is configured on the agent (LiveKit Cloud), the backend stores reports under:
+- `GET /observability/session-report?limit=20`
+- `GET /observability/session-report/{room_name}`
+
+Helper scripts:
+```bash
+# Enable publishing from the LiveKit Cloud agent (restarts agent):
+./scripts/lk_agent_session_reports_on.sh "$LIVEKIT_AGENT_ID" "https://call-agent-development.up.railway.app/observability/session-report"
+
+# Fetch the last 5 calls (redacted by default):
+./scripts/fetch_session_reports.py --url "https://call-agent-development.up.railway.app/observability/session-report" --limit 5
+
+# Disable publishing:
+./scripts/lk_agent_session_reports_off.sh "$LIVEKIT_AGENT_ID"
+```
+
+Notes:
+- Reports appear only after the call ends.
+- `--pii` prints full user/assistant messages (treat as sensitive).
+
+### Option 2: Realtime wire debug (short window; lots of output)
+Use this when you need raw Realtime websocket events (turn detection + generation lifecycle).
+
+Helper scripts:
+```bash
+# Enable (restarts agent):
+./scripts/lk_agent_realtime_debug_on.sh "$LIVEKIT_AGENT_ID"
+
+# Disable:
+./scripts/lk_agent_realtime_debug_off.sh "$LIVEKIT_AGENT_ID"
+```
+
+### Option 3: Repo-native voice logs (recommended long-term)
+Enable `VOICE_DEBUG=1` on the agent to log high-signal session events at INFO:
+- `agent_state_changed`, `user_state_changed`
+- `user_input_transcribed` (final transcript redacted unless `LOG_PII=1`)
+- `speech_created` + `speech_done`
+- `metrics_collected` (Realtime `ttft`, token counts)
+- `function_tools_executed` (tool names + failures)
+- backend tool timing (`VOICE_DEBUG backend_tool_*` in `livekit-agent.backend-tools`)
+
+Helper scripts:
+```bash
+# Enable (restarts agent):
+./scripts/lk_agent_voice_debug_on.sh "$LIVEKIT_AGENT_ID"
+
+# Disable:
+./scripts/lk_agent_voice_debug_off.sh "$LIVEKIT_AGENT_ID"
+```
+
+PII defaults:
+- VOICE_DEBUG logs redact transcripts by default.
+- Set `LOG_PII=1` only for short reproductions.
+
 ## Web (browser) debugging
 Use the dedicated WebRTC guide for the full flow:
 - `docs/documentations/livekit-webrtc-debugging.md`
@@ -241,6 +308,8 @@ Docs:
 These env vars increase signal or timing detail:
 - `LOG_LEVEL=DEBUG` (agent + backend verbosity)
 - `LOG_PII=1` (disables masking of call IDs/phone numbers; avoid in prod)
+- `LK_OPENAI_DEBUG=1` (agent: logs OpenAI Realtime websocket events; high-volume; likely contains PII)
+- `VOICE_DEBUG=1` (agent: structured voice/turn logs; transcripts redacted unless `LOG_PII=1`)
 - `VAPI_TOOLS_LOG_TIMING=1` (tools timing logs in API server; legacy name)
 - `SESSION_REPORTS_URL=...` (agent: enables session report POST on session end)
 - `SESSION_REPORTS_TOKEN=...` (agent + backend: bearer auth for session report endpoint)

@@ -20,6 +20,7 @@
 - Run agent (console): `python -m livekit_agent.agent console`
 - OpenAI Realtime audio smoke (no mic): `./scripts/run_openai_realtime_audio_smoke.sh`
 - Customer lookup smoke (no mic; hits backend DB): `./scripts/run_openai_realtime_customer_lookup_smoke.sh --phone-number "305 555 0123"`
+- Fetch last N call session reports (no UI): `./scripts/fetch_session_reports.py --url "https://<domain>/observability/session-report" --limit 5`
 - Run tools backend (in-memory DB): `TOOLS_TOKEN=dev-secret USE_IN_MEMORY_DB=1 python -m uvicorn api_server.server.fastapi_app:app --host 127.0.0.1 --port 8000`
 - Docker (agent worker): `docker compose up --build`
 

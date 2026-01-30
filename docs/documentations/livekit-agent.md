@@ -31,6 +31,12 @@
    - Agent calls backend `get_case_status(last_user_message=...)` on each user turn.
    - Tool calls are forwarded to the backend via `BackendToolsClient.call_tool(...)`.
 
+## Realtime turn-taking (important)
+- We explicitly disable OpenAI Realtime **auto response generation** (`turn_detection.create_response=false`) so the model does **not** speak on VAD events before our backend-first guardrails run.
+  - All speech is triggered by our code calling `session.generate_reply(...)` (greeting + user turns).
+- We also disable OpenAI Realtime **auto interruption** (`turn_detection.interrupt_response=false`) to reduce false barge-ins / echo cutting off speech.
+- Inbound phone greeting is scheduled with `allow_interruptions=False` to reduce early echo/false barge-ins cutting off the first words.
+
 ## Contract: backend tools (v2)
 - **URL:** `BACKEND_TOOLS_URL` (default ends with `/tools`)
 - **Auth:** header `X-TOOLS-TOKEN` must equal env `TOOLS_TOKEN`

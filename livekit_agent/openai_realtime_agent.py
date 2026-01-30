@@ -300,7 +300,9 @@ class OpenAIRealtimeAgent(Agent):
             if has_sip_participant:
                 self._did_phone_greeting = True
                 self.session.generate_reply(
-                    instructions=self._build_phone_greeting(first_name=None, caller_phone=None)
+                    instructions=self._build_phone_greeting(first_name=None, caller_phone=None),
+                    # Reason: Prevent echo/false barge-ins from cutting off the initial greeting.
+                    allow_interruptions=False,
                 )
             return
 
@@ -317,7 +319,11 @@ class OpenAIRealtimeAgent(Agent):
             )
         except BackendToolsClientError:
             self._did_phone_greeting = True
-            self.session.generate_reply(instructions=self._build_phone_greeting(first_name=None, caller_phone=caller_phone))
+            self.session.generate_reply(
+                instructions=self._build_phone_greeting(first_name=None, caller_phone=caller_phone),
+                # Reason: Prevent echo/false barge-ins from cutting off the initial greeting.
+                allow_interruptions=False,
+            )
             return
 
         customer = case_status.get("customer") if isinstance(case_status, dict) else None
@@ -327,7 +333,11 @@ class OpenAIRealtimeAgent(Agent):
                 first_name = candidate.strip()
 
         self._did_phone_greeting = True
-        self.session.generate_reply(instructions=self._build_phone_greeting(first_name=first_name, caller_phone=caller_phone))
+        self.session.generate_reply(
+            instructions=self._build_phone_greeting(first_name=first_name, caller_phone=caller_phone),
+            # Reason: Prevent echo/false barge-ins from cutting off the initial greeting.
+            allow_interruptions=False,
+        )
 
     @property
     def call_id(self) -> str:
