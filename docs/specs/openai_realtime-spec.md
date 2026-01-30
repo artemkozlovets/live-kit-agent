@@ -42,7 +42,8 @@ Replace the current “STT + (helper LLM) + TTS” stack with **OpenAI Realtime*
 - Backend exposes a clean `POST /tools` contract (new simplified payload).
 - Backend enforces slot-filling guardrails + explicit booking confirmation.
 
-This spec intentionally **skips** the “Vapi-shaped adapter milestone” from `docs/migrate_vapi_to_livekit-spec.md` and goes straight to a provider-agnostic `/tools` API.
+This spec intentionally **skips** any “Vapi-shaped adapter milestone” and goes straight to a provider-agnostic `/tools` API.
+This repo no longer keeps the Vapi migration milestone docs (they were historical context after the cutover).
 
 ## Key decisions
 1. **Architecture**: Option 1 — LiveKit transport + OpenAI Realtime conversation engine + backend tools API.
@@ -220,11 +221,11 @@ Backend:
 Rollout:
 - Deploy backend `/tools` first (no agent changes yet).
 - Deploy agent with `/tools` enabled.
-- After stability, remove `/vapi/tools`.
+- Keep `/vapi/tools` removed (expect `404` for any legacy callers).
 
 Rollback:
-- Keep a single “kill switch” env flag on the agent to fall back to the previous stack (or to stop answering calls) while we investigate.
-- Ensure phone routing can be reverted quickly (LiveKit ↔ prior runtime) until stability is proven.
+- This repo is intentionally **OpenAI Realtime-only** (no legacy STT/TTS pipeline).
+- Roll back by disabling dispatch / routing calls away temporarily, and redeploying the last-known-good agent/backend versions.
 
 ## Integration points (known)
 - Agent entry point: `livekit_agent/agent.py`

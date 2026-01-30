@@ -1,6 +1,6 @@
 # Database + Migrations
 
-> **Last Updated**: 2026-01-24  
+> **Last Updated**: 2026-01-30  
 > **Audience**: Codex (repo context)  
 > **Status**: Draft
 
@@ -8,6 +8,20 @@
 - API server code depends on a small `DatabaseClient` protocol.
 - DB implementation is chosen by env vars in `api_server/server/dependencies.py`.
 - Migrations live in `migrations/` and are Postgres SQL.
+
+## What this repo stores in Postgres (high-signal)
+Big picture: the DB is used for **business objects** (customers/units/service orders) plus **observability** (session reports).
+There is no separate “STT/TTS/LLM database” in this codebase.
+
+Tables used by this repo:
+- `customers` (customer lookup + create + update)
+- `units` (fleet unit lookup + create)
+- `service_orders` (create + update service orders)
+- `session_reports` (store per-room session report JSON)
+
+Where this is implemented:
+- Business tables: `api_server/server/postgres_client.py`
+- Session reports: `api_server/observability/session_report_store.py`
 
 ## DatabaseClient interface
 - Protocol definition: `api_server/server/dependencies.py`

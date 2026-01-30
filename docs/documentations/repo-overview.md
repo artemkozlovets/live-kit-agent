@@ -1,6 +1,6 @@
 # Repo Overview (Codex)
 
-> **Last Updated**: 2026-01-28  
+> **Last Updated**: 2026-01-30  
 > **Audience**: Codex (repo context)  
 > **Status**: Draft
 
@@ -9,6 +9,14 @@
 - **Runtime:** `livekit_agent/` (agent worker) ⇄ `api_server/` (tools backend).
 - **Specs/config:** `squad/assistants/` is the source of tool schemas that the agent loads.
 - **DB:** schema changes live in `migrations/`.
+
+## Scope: OpenAI Realtime-only
+This repo intentionally supports **one** conversation engine:
+- ✅ OpenAI Realtime (default and only)
+- ❌ Legacy STT/TTS pipelines (removed)
+- ❌ Gemini networked extraction/classification (removed; `get_case_status` is deterministic)
+- ❌ Offline eval suite (removed)
+- ❌ `vapi_export/` historical artifacts (removed)
 
 ## Runtime flow (happy path)
 1. LiveKit starts the agent worker (`livekit_agent/agent.py`).
