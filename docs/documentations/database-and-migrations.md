@@ -18,6 +18,7 @@ Tables used by this repo:
 - `units` (fleet unit lookup + create)
 - `service_orders` (create + update service orders)
 - `session_reports` (store per-room session report JSON)
+- `sms_messages` (store Twilio MessageSid + delivery status metadata)
 
 Where this is implemented:
 - Business tables: `api_server/server/postgres_client.py`
@@ -61,6 +62,9 @@ Currently:
   - Adds `session_reports` table for programmatic agent session report exports
   - Stores one JSONB report per LiveKit room (`room_name` primary key)
   - Adds an index on `received_at DESC` for “most recent” lookups
+- `migrations/003_add_sms_messages.sql`
+  - Adds `sms_messages` table for outbound confirmation SMS tracking
+  - Stores only last-4 digits for phone numbers (no full PII)
 
 ## Related docs
 - `docs/documentations/api-server.md`

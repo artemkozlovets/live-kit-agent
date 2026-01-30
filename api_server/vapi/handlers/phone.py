@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
 from pydantic import ValidationError
 
+from api_server.integrations.twilio.messages_client import (
+    TwilioSendError,
+    load_twilio_sms_config,
+    send_sms_via_twilio,
+)
+from api_server.integrations.twilio.sms_message_store import sms_message_store
 from api_server.models.inbound_models import InboundArgs
 from api_server.models.new_customer_models import NewCustomerArgs
 from api_server.server.dependencies import DatabaseClient
@@ -16,6 +23,8 @@ from api_server.vapi.tool_call_parsing import get_call_id, parse_tool_arguments
 
 
 MAX_PHONE_VALIDATION_ATTEMPTS = 3
+
+logger = logging.getLogger(__name__)
 
 
 def _get_last_four_digits(phone_number: str) -> str | None:
@@ -409,19 +418,121 @@ def handle_update_customer(
     }
 
 
-def handle_send_confirmation_sms(
+async def handle_send_confirmation_sms(
     tool_call: dict[str, Any],
     message_payload: dict[str, Any],
     session_store: SessionStore,
     database_client: DatabaseClient,
 ) -> dict[str, Any]:
-    _ = tool_call
-    _ = message_payload
-    _ = session_store
     _ = database_client
-    # Reason: SMS is not configured, but order is complete - guide assistant to wrap up
+    tool_arguments = parse_tool_arguments(tool_call)
+
+    raw_phone_number = tool_arguments.get("phone_number")
+    raw_message = tool_arguments.get("message")
+
+    message = raw_message.strip() if isinstance(raw_message, str) and raw_message.strip() else None
+    if message is None:
+        return {
+            "sent": False,
+            "sms_status": "invalid_request",
+            "error": "Missing SMS message body",
+            "next_action": "SMS not sent. Continue without texting and end the call politely.",
+        }
+
+    call_id = get_call_id(message_payload)
+    session = session_store.get(call_id) if call_id else {}
+
+    existing_sid = session.get("confirmation_sms_message_sid")
+    if isinstance(existing_sid, str) and existing_sid.strip():
+        # Reason: Avoid sending duplicate confirmation texts if the tool is called twice.
+        return {
+            "sent": True,
+            "sms_status": "already_sent",
+            "message_sid": existing_sid.strip(),
+            "next_action": "SMS already sent. Thank the caller and end the call politely.",
+        }
+
+    normalized_phone_number = (
+        normalize_us_phone_number(raw_phone_number) if isinstance(raw_phone_number, str) else None
+    )
+    if normalized_phone_number is None:
+        session_phone = session.get("phone_number")
+        if isinstance(session_phone, str) and session_phone:
+            if not isinstance(raw_phone_number, str):
+                normalized_phone_number = session_phone
+            else:
+                raw_last4 = _get_last_four_digits(raw_phone_number)
+                session_last4 = _get_last_four_digits(session_phone)
+                if raw_last4 and session_last4 and raw_last4 == session_last4:
+                    normalized_phone_number = session_phone
+
+    if normalized_phone_number is None:
+        return {
+            "sent": False,
+            "sms_status": "invalid_phone",
+            "error": "Invalid phone number format",
+            "next_action": "SMS not sent. Continue without texting and end the call politely.",
+        }
+
+    twilio_config = load_twilio_sms_config()
+    if twilio_config is None:
+        # Reason: Keep stable stub response when Twilio is not configured.
+        return {
+            "sent": False,
+            "sms_status": "not_configured",
+            "next_action": "SMS skipped (not configured). Thank the caller, confirm help is on the way, and end the call politely.",
+        }
+
+    try:
+        send_result = await send_sms_via_twilio(
+            config=twilio_config,
+            to_number=normalized_phone_number,
+            body=message,
+        )
+    except TwilioSendError as exc:
+        logger.warning(
+            "Twilio SMS send failed",
+            extra={
+                "call_id": call_id,
+                "to_last4": _get_last_four_digits(normalized_phone_number),
+            },
+        )
+        return {
+            "sent": False,
+            "sms_status": "failed",
+            "error": str(exc),
+            "next_action": "SMS failed to send. Continue without texting and end the call politely.",
+        }
+    except Exception:
+        logger.exception(
+            "Unexpected error sending SMS",
+            extra={
+                "call_id": call_id,
+                "to_last4": _get_last_four_digits(normalized_phone_number),
+            },
+        )
+        return {
+            "sent": False,
+            "sms_status": "error",
+            "error": "Unexpected error sending SMS",
+            "next_action": "SMS failed to send. Continue without texting and end the call politely.",
+        }
+
+    sms_message_store.record_outbound_message(
+        message_sid=send_result.message_sid,
+        call_id=call_id,
+        to_number=normalized_phone_number,
+        from_number=twilio_config.from_number,
+        status=send_result.status,
+    )
+
+    if call_id:
+        session["confirmation_sms_message_sid"] = send_result.message_sid
+        session_store.set(call_id, session)
+
     return {
-        "sent": False,
-        "sms_status": "not_configured",
-        "next_action": "SMS skipped (not configured). Thank the caller, confirm help is on the way, and end the call politely.",
+        "sent": True,
+        "sms_status": send_result.status or "queued",
+        "message_sid": send_result.message_sid,
+        "next_action": "SMS sent. Thank the caller and end the call politely.",
     }

@@ -4,7 +4,6 @@ import os
 import traceback
 from typing import Any
 
-from dotenv import load_dotenv
 from fastapi import FastAPI
 
 from api_server.server.routers.customer import router as customer_router
@@ -12,10 +11,17 @@ from api_server.server.routers.service_order import router as service_order_rout
 from api_server.server.routers.unit import router as unit_router
 from api_server.server.routers.validation import router as validation_router
 from api_server.observability.router import router as observability_router
+from api_server.integrations.twilio.router import router as twilio_router
 from api_server.tools.router import router as tools_router
 
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:  # pragma: no cover
+    load_dotenv = None  # type: ignore[assignment]
+
 if not os.getenv("PYTEST_CURRENT_TEST"):
-    load_dotenv()
+    if load_dotenv is not None:
+        load_dotenv()
 
 
 _LOG_RECORD_BUILTINS = {
@@ -101,6 +107,7 @@ if not os.getenv("PYTEST_CURRENT_TEST"):
 app = FastAPI()
 
 app.include_router(tools_router)
+app.include_router(twilio_router)
 app.include_router(observability_router)
 app.include_router(validation_router)
 app.include_router(customer_router)

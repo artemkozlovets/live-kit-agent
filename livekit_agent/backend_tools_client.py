@@ -84,6 +84,18 @@ class BackendToolsClient:
     ) -> dict[str, Any]:
         started = time.perf_counter()
         masked_call_id = _mask_phone_like(call_id)
+        voice_debug = _truthy_env("VOICE_DEBUG")
+
+        if voice_debug:
+            logger.info(
+                "VOICE_DEBUG backend_tool_start",
+                extra={
+                    "call_id": masked_call_id,
+                    "tool_name": tool_name,
+                    "tool_call_id": tool_call_id,
+                    "argument_keys": sorted(tool_arguments.keys()),
+                },
+            )
 
         logger.debug(
             "calling backend tool",
@@ -118,6 +130,16 @@ class BackendToolsClient:
                 # Reason: Backwards-compatible DI for existing tests/mocks.
                 response = await post_json(self.tools_url, payload)
         except TimeoutError as exc:
+            if voice_debug:
+                logger.info(
+                    "VOICE_DEBUG backend_tool_timeout",
+                    extra={
+                        "call_id": masked_call_id,
+                        "tool_name": tool_name,
+                        "tool_call_id": tool_call_id,
+                        "elapsed_ms": int((time.perf_counter() - started) * 1000),
+                    },
+                )
             logger.warning(
                 "backend tools request timed out",
                 extra={
@@ -129,6 +151,17 @@ class BackendToolsClient:
             )
             raise BackendToolsTransportError("Backend tools request timed out") from exc
         except Exception as exc:
+            if voice_debug:
+                logger.info(
+                    "VOICE_DEBUG backend_tool_error",
+                    extra={
+                        "call_id": masked_call_id,
+                        "tool_name": tool_name,
+                        "tool_call_id": tool_call_id,
+                        "elapsed_ms": int((time.perf_counter() - started) * 1000),
+                        "error_type": type(exc).__name__,
+                    },
+                )
             logger.warning(
                 "backend tools request failed",
                 extra={
@@ -145,13 +178,25 @@ class BackendToolsClient:
         if not isinstance(results, list):
             raise BackendToolsResponseError("Backend response missing 'results' list")
 
-        return self._parse_tools_v2_result(
+        parsed = self._parse_tools_v2_result(
             results=results,
             tool_call_id=tool_call_id,
             tool_name=tool_name,
             masked_call_id=masked_call_id,
             started=started,
         )
+        if voice_debug:
+            logger.info(
+                "VOICE_DEBUG backend_tool_ok",
+                extra={
+                    "call_id": masked_call_id,
+                    "tool_name": tool_name,
+                    "tool_call_id": tool_call_id,
+                    "elapsed_ms": int((time.perf_counter() - started) * 1000),
+                    "result_keys": _safe_keys(parsed),
+                },
+            )
+        return parsed
 
     def _parse_tools_v2_result(
         self,

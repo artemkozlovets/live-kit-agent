@@ -21,6 +21,7 @@ from livekit_agent.backend_tools_client import BackendToolsClient
 from livekit_agent.openai_realtime_agent import OpenAIRealtimeAgent
 from livekit_agent.openai_realtime_session import build_openai_realtime_session
 from livekit_agent.session_report_publisher import SessionReportPublisher
+from livekit_agent.voice_debug import setup_voice_debug
 
 logger = logging.getLogger("livekit-agent")
 
@@ -223,6 +224,11 @@ async def entrypoint(ctx: JobContext) -> None:
     )
 
     session = build_openai_realtime_session(voice=voice)
+    setup_voice_debug(
+        session=session,
+        room_name=ctx.room.name,
+        job_id=getattr(getattr(ctx, "job", None), "id", None),
+    )
     agent: Agent = OpenAIRealtimeAgent(
         backend_client=BackendToolsClient(tools_url=backend_tools_url),
         use_backend_guardrails=use_backend_guardrails,
