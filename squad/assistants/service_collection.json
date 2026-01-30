@@ -1,81 +1,14 @@
 {
   "name": "ServiceCollection",
-  "voice": {
-    "model": "eleven_flash_v2_5",
-    "voiceId": "dj3G1R1ilKoFKhBnWOzG",
-    "provider": "11labs",
-    "stability": 0.5,
-    "fallbackPlan": {
-      "voices": [
-        {
-          "model": "eleven_turbo_v2_5",
-          "voiceId": "kPzsL2i3teMYv0FxEYQ6",
-          "provider": "11labs",
-          "stability": 0.5,
-          "similarityBoost": 0.75
-        }
-      ]
-    },
-    "similarityBoost": 0.75,
-    "fillerInjectionEnabled": false
-  },
-  "model": {
-    "model": "gemini-2.5-flash",
-    "toolIds": [
-      "95968022-2d9c-4eea-a335-c67258a43147"
-    ],
-    "provider": "google",
-    "temperature": 0.3
-  },
-  "firstMessage": "",
-  "transcriber": {
-    "model": "flux-general-en",
-    "language": "en",
-    "provider": "deepgram"
-  },
-  "backgroundSound": "off",
-  "backchannelingEnabled": false,
-  "firstMessageMode": "assistant-speaks-first-with-model-generated-message",
-  "hooks": [
-    {
-      "do": [
-        {
-          "type": "say",
-          "exact": [
-            "Just checking \u2014 are you still there?",
-            "No rush. I can continue when you're ready.",
-            "I'm here when you're ready to continue."
-          ]
-        }
-      ],
-      "on": "customer.speech.timeout",
-      "name": "idle-reengage",
-      "options": {
-        "timeoutSeconds": 10,
-        "triggerMaxCount": 3,
-        "triggerResetMode": "onUserSpeech"
-      }
-    }
-  ],
   "tools": [
     {
       "type": "function",
-      "server": {
-        "url": "https://call-agent-development.up.railway.app/tools"
-      },
       "function": {
         "name": "get_case_status",
         "parameters": {
           "type": "object",
-          "required": [
-            "call_id",
-            "last_user_message"
-          ],
+          "required": ["last_user_message"],
           "properties": {
-            "call_id": {
-              "type": "string",
-              "description": "The Vapi call ID"
-            },
             "last_user_message": {
               "type": "string",
               "description": "The user's most recent message, exactly as they said it"
@@ -83,358 +16,122 @@
           }
         },
         "description": "Get case status and determine how to respond. ALWAYS pass the user's last message."
-      },
-      "messages": [
-        {
-          "type": "request-start",
-          "content": ""
-        },
-        {
-          "type": "request-response-delayed",
-          "content": "",
-          "timingMilliseconds": 60000
-        },
-        {
-          "type": "request-failed",
-          "content": "I'm having trouble connecting to the system."
-        }
-      ]
+      }
     },
     {
       "type": "function",
-      "server": {
-        "url": "https://call-agent-development.up.railway.app/tools"
-      },
       "function": {
         "name": "validate_vin",
         "parameters": {
           "type": "object",
-          "required": [
-            "vin"
-          ],
+          "required": ["vin"],
           "properties": {
-            "vin": {
-              "type": "string",
-              "description": "Vehicle Identification Number (VIN)"
-            }
+            "vin": { "type": "string", "description": "Vehicle Identification Number (VIN)" }
           }
         },
         "description": "Validate VIN format and track attempts across the call session."
-      },
-      "messages": [
-        {
-          "type": "request-start",
-          "content": ""
-        },
-        {
-          "type": "request-response-delayed",
-          "content": "",
-          "timingMilliseconds": 60000
-        },
-        {
-          "type": "request-failed",
-          "content": "I'm having trouble connecting to the system."
-        }
-      ]
+      }
     },
     {
       "type": "function",
-      "server": {
-        "url": "https://call-agent-development.up.railway.app/tools"
-      },
       "function": {
         "name": "check_vin_database",
         "parameters": {
           "type": "object",
-          "required": [
-            "vin"
-          ],
+          "required": ["vin"],
           "properties": {
-            "vin": {
-              "type": "string",
-              "description": "VIN to lookup in fleet database"
-            }
+            "vin": { "type": "string", "description": "VIN to lookup in fleet database" }
           }
         },
         "description": "Check if VIN exists in the customer's fleet database."
-      },
-      "messages": [
-        {
-          "type": "request-start",
-          "content": ""
-        },
-        {
-          "type": "request-response-delayed",
-          "content": "",
-          "timingMilliseconds": 60000
-        },
-        {
-          "type": "request-failed",
-          "content": "I'm having trouble connecting to the system."
-        }
-      ]
+      }
     },
     {
       "type": "function",
-      "server": {
-        "url": "https://call-agent-development.up.railway.app/tools"
-      },
       "function": {
         "name": "add_service",
         "parameters": {
           "type": "object",
-          "required": [
-            "service_complaint",
-            "service_location"
-          ],
+          "required": ["service_complaint", "service_location"],
           "properties": {
-            "vin_number": {
-              "type": "string",
-              "description": "VIN (optional)"
-            },
-            "unit_number": {
-              "type": "string",
-              "description": "Fleet unit number (optional)"
-            },
-            "unit_nickname": {
-              "type": "string",
-              "description": "Vehicle nickname (optional)"
-            },
-            "service_location": {
-              "type": "string",
-              "description": "Where the vehicle is located"
-            },
-            "service_complaint": {
-              "type": "string",
-              "description": "What service is needed"
-            }
+            "vin_number": { "type": "string", "description": "VIN (optional)" },
+            "unit_number": { "type": "string", "description": "Fleet unit number (optional)" },
+            "unit_nickname": { "type": "string", "description": "Vehicle nickname (optional)" },
+            "service_location": { "type": "string", "description": "Where the vehicle is located" },
+            "service_complaint": { "type": "string", "description": "What service is needed" }
           }
         },
         "description": "Add a service to the session for later storage."
-      },
-      "messages": [
-        {
-          "type": "request-start",
-          "content": ""
-        },
-        {
-          "type": "request-response-delayed",
-          "content": "",
-          "timingMilliseconds": 60000
-        },
-        {
-          "type": "request-failed",
-          "content": "I'm having trouble connecting to the system."
-        }
-      ]
+      }
     },
     {
       "type": "function",
-      "server": {
-        "url": "https://call-agent-development.up.railway.app/tools"
-      },
       "function": {
         "name": "confirm_services",
-        "parameters": {
-          "type": "object",
-          "properties": {}
-        },
+        "parameters": { "type": "object", "properties": {} },
         "description": "Mark services as confirmed after summarizing to the caller."
-      },
-      "messages": [
-        {
-          "type": "request-start",
-          "content": ""
-        },
-        {
-          "type": "request-response-delayed",
-          "content": "",
-          "timingMilliseconds": 60000
-        },
-        {
-          "type": "request-failed",
-          "content": "I'm having trouble connecting to the system."
-        }
-      ]
-    },
-    {
-      "type": "handoff",
-      "messages": [],
-      "destinations": [
-        {
-          "type": "assistant",
-          "assistantId": "553a6ddd-6505-400b-9169-c6a0cf894dec",
-          "description": "handoff_to_CustomerIntake"
-        }
-      ]
-    },
-    {
-      "type": "handoff",
-      "messages": [],
-      "destinations": [
-        {
-          "type": "assistant",
-          "assistantId": "53748b6f-2afe-4147-9ff7-e189acec4223",
-          "description": "handoff_to_Booking"
-        }
-      ]
+      }
     },
     {
       "type": "function",
-      "server": {
-        "url": "https://call-agent-development.up.railway.app/tools"
-      },
       "function": {
         "name": "update_customer",
         "parameters": {
           "type": "object",
-          "required": [
-            "updates"
-          ],
+          "required": ["updates"],
           "properties": {
             "updates": {
               "type": "object",
               "properties": {
-                "city": {
-                  "type": "string"
-                },
-                "state": {
-                  "type": "string"
-                },
-                "last_name": {
-                  "type": "string"
-                },
-                "first_name": {
-                  "type": "string"
-                },
-                "postalCode": {
-                  "type": "string"
-                },
-                "company_name": {
-                  "type": "string"
-                },
-                "phone_number": {
-                  "type": "string"
-                },
-                "email_address": {
-                  "type": "string"
-                },
-                "streetAddress": {
-                  "type": "string"
-                }
+                "city": { "type": "string" },
+                "state": { "type": "string" },
+                "last_name": { "type": "string" },
+                "first_name": { "type": "string" },
+                "postalCode": { "type": "string" },
+                "company_name": { "type": "string" },
+                "phone_number": { "type": "string" },
+                "email_address": { "type": "string" },
+                "streetAddress": { "type": "string" }
               }
             },
-            "customer_id": {
-              "type": "string"
-            },
-            "phone_number": {
-              "type": "string"
-            }
+            "customer_id": { "type": "string" },
+            "phone_number": { "type": "string" }
           }
         },
         "description": "Update an existing customer's information."
-      },
-      "messages": [
-        {
-          "type": "request-start",
-          "content": ""
-        },
-        {
-          "type": "request-response-delayed",
-          "content": "",
-          "timingMilliseconds": 60000
-        },
-        {
-          "type": "request-failed",
-          "content": "I couldn't update that."
-        }
-      ]
+      }
     },
     {
       "type": "function",
-      "server": {
-        "url": "https://call-agent-development.up.railway.app/tools"
-      },
       "function": {
         "name": "update_service_order",
         "parameters": {
           "type": "object",
-          "required": [
-            "updates"
-          ],
+          "required": ["updates"],
           "properties": {
             "updates": {
               "type": "object",
               "properties": {
-                "vin_number": {
-                  "type": "string"
-                },
-                "unit_number": {
-                  "type": "string"
-                },
-                "unit_nickname": {
-                  "type": "string"
-                },
-                "service_location": {
-                  "type": "string"
-                },
-                "service_complaint": {
-                  "type": "string"
-                }
+                "vin_number": { "type": "string" },
+                "unit_number": { "type": "string" },
+                "unit_nickname": { "type": "string" },
+                "service_location": { "type": "string" },
+                "service_complaint": { "type": "string" }
               }
             },
-            "order_id": {
-              "type": "string"
-            }
+            "order_id": { "type": "string" }
           }
         },
         "description": "Update an existing service order's details."
-      },
-      "messages": [
-        {
-          "type": "request-start",
-          "content": ""
-        },
-        {
-          "type": "request-response-delayed",
-          "content": "",
-          "timingMilliseconds": 60000
-        },
-        {
-          "type": "request-failed",
-          "content": "I couldn't update that."
-        }
-      ]
+      }
     },
     {
       "type": "function",
-      "server": {
-        "url": "https://call-agent-development.up.railway.app/tools"
-      },
       "function": {
         "name": "get_session_summary",
-        "parameters": {
-          "type": "object",
-          "required": [],
-          "properties": {}
-        },
+        "parameters": { "type": "object", "required": [], "properties": {} },
         "description": "Get the accumulated service list for this call."
-      },
-      "messages": [
-        {
-          "type": "request-start",
-          "content": ""
-        },
-        {
-          "type": "request-response-delayed",
-          "content": "",
-          "timingMilliseconds": 60000
-        },
-        {
-          "type": "request-failed",
-          "content": "I'm having trouble connecting to the system."
-        }
-      ]
+      }
     }
   ]
 }

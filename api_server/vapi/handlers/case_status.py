@@ -3,19 +3,16 @@
 from __future__ import annotations
 
 import logging
-import os
 import re
 from typing import Any
 
 from api_server.models.database_records import CustomerRecord
 from api_server.models.inbound_models import InboundArgs
 from api_server.server.dependencies import DatabaseClient
-from api_server.vapi.correction_extractor import extract_corrections
 from api_server.vapi.case_status import build_case_status
 from api_server.vapi.fast_message_extractor import extract_customer_service_info_fast
 from api_server.vapi.intake_extractor import extract_intake_info_fast
-from api_server.vapi.message_extractor import extract_customer_service_info
-from api_server.vapi.message_classifier import MessageCategory, classify_message, classify_message_heuristic
+from api_server.vapi.message_classifier import MessageCategory, classify_message_heuristic
 from api_server.vapi.response_mode import compute_response_mode
 from api_server.vapi.session_store import SessionStore
 from api_server.vapi.tool_call_parsing import get_call_id, parse_tool_arguments
@@ -185,14 +182,6 @@ def _apply_expected_field_answer(
         return True
 
     return False
-
-
-def _env_flag(name: str, default: bool) -> bool:
-    raw = os.environ.get(name)
-    if raw is None:
-        return default
-    normalized = str(raw).strip().lower()
-    return normalized in {"1", "true", "yes", "y", "on"}
 
 
 def _split_full_name(full_name: str | None) -> tuple[str | None, str | None]:
@@ -499,34 +488,12 @@ async def handle_get_case_status(
         return case_status
 
     # Performance note:
-    # `get_case_status` runs on every turn, so any network calls here (Gemini, DB)
-    # can cause multi-second tool latency and trigger filler speech in Vapi.
-    tools_api_version = message_payload.get("_tools_api_version")
-    is_tools_v2 = tools_api_version == 2
-
-    if is_tools_v2:
-        # Reason: /tools is the OpenAI Realtime cutover path and must never require
-        # Gemini keys or incur Gemini latency, regardless of env flags.
-        use_gemini_classification = False
-        use_gemini_extraction = False
-        use_gemini_corrections = False
-        # Reason: Keep slot-filling deterministic for the agent by default (no network).
-        use_fast_extractor = True
-        slot_filling = True
-    else:
-        use_gemini_classification = _env_flag("GET_CASE_STATUS_GEMINI_CLASSIFICATION", True)
-        use_gemini_extraction = _env_flag("GET_CASE_STATUS_GEMINI_EXTRACTION", True)
-        use_gemini_corrections = _env_flag("GET_CASE_STATUS_GEMINI_CORRECTIONS", True)
-        use_fast_extractor = _env_flag("GET_CASE_STATUS_FAST_EXTRACTOR", False)
-        slot_filling = _env_flag("GET_CASE_STATUS_SLOT_FILLING", False)
+    # `get_case_status` runs on every turn; keep it deterministic and avoid network calls.
+    slot_filling = True
 
     category = MessageCategory.NORMAL
     if last_user_message is not None:
-        category = (
-            await classify_message(last_user_message)
-            if use_gemini_classification
-            else classify_message_heuristic(last_user_message)
-        )
+        category = classify_message_heuristic(last_user_message)
 
     session = session_store.get(call_id) if call_id else {}
     if slot_filling and call_id and expected_field is not None and isinstance(last_user_message, str):
@@ -595,15 +562,7 @@ async def handle_get_case_status(
         try:
             extracted_payloads: list[tuple[str, dict[str, Any]]] = []
 
-            extracted: dict[str, Any] | None = None
-            if use_gemini_extraction:
-                extracted = await extract_customer_service_info(last_user_message)
-                # Reason: Gemini can fail (invalid JSON / timeouts). When enabled, allow a
-                # deterministic fallback so the conversation can still progress.
-                if extracted is None and use_fast_extractor:
-                    extracted = extract_customer_service_info_fast(last_user_message)
-            elif use_fast_extractor:
-                extracted = extract_customer_service_info_fast(last_user_message)
+            extracted = extract_customer_service_info_fast(last_user_message)
 
             if isinstance(extracted, dict):
                 extracted_payloads.append(("default", extracted))
@@ -688,41 +647,6 @@ async def handle_get_case_status(
                             _normalize_optional_str(extracted_customer.get("marketing_source")),
                             overwrite=overwrite,
                         )
-
-                    updates_for_db: dict[str, object] = {}
-                    if customer_record is not None and use_gemini_extraction:
-                        extracted_company = _normalize_optional_str(extracted_customer.get("company"))
-                        if extracted_company is not None:
-                            stored_company = _normalize_optional_str(customer_record.company_name)
-                            if stored_company is None:
-                                updates_for_db["company_name"] = extracted_company
-
-                        stored_contact_name = _normalize_optional_str(customer_record.customer_name)
-                        if stored_contact_name is None:
-                            extracted_first = _normalize_optional_str(extracted_customer.get("first_name"))
-                            extracted_last = _normalize_optional_str(extracted_customer.get("last_name"))
-                            if extracted_first is not None or extracted_last is not None:
-                                updates_for_db["contact_name"] = " ".join(
-                                    part for part in (extracted_first, extracted_last) if part
-                                )
-
-                        stored_phone = _normalize_optional_str(customer_record.phone_number)
-                        if stored_phone is None:
-                            extracted_phone = _normalize_optional_str(extracted_customer.get("phone"))
-                            if extracted_phone is not None:
-                                updates_for_db["phone_number"] = extracted_phone
-
-                    update_customer = getattr(database_client, "update_customer", None)
-                    if (
-                        customer_record is not None
-                        and updates_for_db
-                        and callable(update_customer)
-                    ):
-                        try:
-                            update_customer(customer_record.customer_id, updates_for_db)
-                        except NotImplementedError:
-                            # Reason: DB writes are optional; keep session-based extraction.
-                            pass
 
                 if isinstance(extracted_service, dict):
                     services = session.get("services", [])
@@ -947,8 +871,6 @@ async def handle_get_case_status(
         then_action = then_action_override
 
     detected_corrections = None
-    if category == MessageCategory.CORRECTION and use_gemini_corrections:
-        detected_corrections = await extract_corrections(last_user_message, case_status)
 
     case_status.update(
         {

@@ -24,9 +24,8 @@ Console recordings (from `--record`) go to:
 - `console-recordings/`
 
 ## Key fixes that prevent “stuck” local runs
-- **Gemini extraction fallback:** if Gemini extraction fails, `get_case_status` can fall back to the deterministic extractor when `GET_CASE_STATUS_FAST_EXTRACTOR=1`.
 - **Vehicle description accepted:** if the caller says a vehicle description (e.g. “blue truck”) instead of a VIN/unit number, we save it as a `unit_nickname` so the flow can move on.
-- **Env clarity:** `/health/env` now treats `GOOGLE_API_KEY` as satisfying the “Gemini API key loaded” check (no secrets exposed).
+- **Env clarity:** `/health/env` reports whether key env vars are configured (no secrets exposed).
 
 ## Useful quick checks
 - Backend env presence (no secrets):
@@ -36,12 +35,9 @@ curl -sS http://127.0.0.1:8000/health/env | jq .
 
 ## Advanced knobs
 You can override these at invocation time:
-- Use Gemini inside `get_case_status` (slower, networked):
-  - `GET_CASE_STATUS_GEMINI_CLASSIFICATION=1`
-  - `GET_CASE_STATUS_GEMINI_EXTRACTION=1`
-  - `GET_CASE_STATUS_GEMINI_CORRECTIONS=1`
-- Disable “fast intake” and use the legacy callback-number preflight:
-  - `AGENT_FAST_INTAKE=0`
+- Backend-first vs OpenAI-first:
+  - `AGENT_BACKEND_GUARDRAILS=true` (default): call `get_case_status` on every user turn.
+  - `AGENT_BACKEND_GUARDRAILS=false`: let OpenAI drive, calling tools only when needed.
 
 ## Canonical doc
 The detailed guide lives at:

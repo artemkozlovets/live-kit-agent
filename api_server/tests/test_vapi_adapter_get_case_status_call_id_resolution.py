@@ -25,7 +25,7 @@ def test_get_case_status_uses_payload_call_id_over_tool_args(monkeypatch) -> Non
     session_store.clear(call_id)
     session_store.clear(placeholder_call_id)
 
-    async def fake_extractor(message: str):  # noqa: ANN001
+    def fake_fast_extractor(message: str):  # noqa: ANN001
         assert isinstance(message, str)
         return {
             "customer": {
@@ -43,7 +43,7 @@ def test_get_case_status_uses_payload_call_id_over_tool_args(monkeypatch) -> Non
             },
         }
 
-    monkeypatch.setattr(case_status_handler, "extract_customer_service_info", fake_extractor)
+    monkeypatch.setattr(case_status_handler, "extract_customer_service_info_fast", fake_fast_extractor)
 
     app.dependency_overrides[get_database_client] = lambda: FakeDatabaseClient()
     try:

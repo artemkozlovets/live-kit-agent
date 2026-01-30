@@ -6,9 +6,8 @@
 
 ## TL;DR
 - **Goal:** figure out why the LiveKit Cloud agent joins but “never responds”.
-- **Entry points:** `lk agent logs`, `railway logs`, and the agent boot path in [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L547).
+- **Entry points:** `lk agent logs`, `railway logs`, and the agent boot path in [`livekit_agent/agent.py`](../../livekit_agent/agent.py).
 - **Where to change:**
-  - STT/Deepgram config + session logging: [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L560)
   - Backend tools HTTP contract + errors: [`livekit_agent/backend_tools_client.py`](../../livekit_agent/backend_tools_client.py#L69)
   - Backend `/tools` handler: [`api_server/tools/router.py`](../../api_server/tools/router.py)
 - **How to verify:** dispatch a room + publish a known-good Ogg Opus sample via CLI (below), then confirm:
@@ -19,18 +18,17 @@
 ## Big picture
 A “silent” agent is almost always one of:
 1. **No user audio reaches the agent** (you’re connected but not publishing mic audio / wrong codec / permissions).
-2. **STT fails at startup** (agent can’t transcribe; often looks like silence).
-3. **The tools backend is unreachable or erroring** (agent can hear you but can’t decide what to say).
+2. **OpenAI Realtime session failed to start** (missing/invalid `OPENAI_API_KEY`, missing plugin, invalid config).
+3. **The tools backend is unreachable or erroring** (agent can hear you but can’t complete the tool loop).
 4. **The session is being closed** (participant disconnect, job ended, etc.).
 
 This runbook prioritizes fast isolation via `lk` + `railway`.
 
 ## Preconditions (this repo)
 - `livekit.toml` points `lk` at the intended project + agent: [`livekit.toml`](../../livekit.toml#L1)
-- LiveKit Cloud agent uses:
-  - OpenAI Realtime by default (`AGENT_ENGINE=openai_realtime`)
-  - Deepgram STT + Cartesia TTS only when `AGENT_ENGINE=legacy`: [`livekit_agent/agent.py`](../../livekit_agent/agent.py)
-  - Backend tools URL from `BACKEND_TOOLS_URL`: [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L551)
+- LiveKit Cloud agent requires:
+  - `OPENAI_API_KEY` set
+  - Backend tools URL from `BACKEND_TOOLS_URL`: [`livekit_agent/agent.py`](../../livekit_agent/agent.py)
 - Railway runs the tools API (`POST /tools`): [`api_server/tools/router.py`](../../api_server/tools/router.py)
 
 ## 1) Sanity check CLI + pointers
@@ -100,21 +98,14 @@ lk agent logs --log-type deploy
 
 High-signal patterns:
 
-### A) STT startup failure (common “silent” root cause)
+### A) OpenAI Realtime startup failure (common “silent” root cause)
 Symptom in `lk agent logs`:
-- `AgentSession error` with `status=400` and `remote_error` mentioning Deepgram config.
+- `AgentSession error` early in session start (often before any `/tools` traffic).
 
-Concrete example we hit:
-- Deepgram rejects `eager_eot_threshold` outside **0.3–0.9**.
-- Fix is to set `DEEPGRAM_EAGER_EOT_THRESHOLD` to a valid float (default is `0.4`).
-
-Code that parses + clamps this:
-- [`livekit_agent/agent.py`](../../livekit_agent/agent.py#L560)
-
-Fix (LiveKit Cloud secret update):
-```bash
-lk agent update-secrets --secrets "DEEPGRAM_EAGER_EOT_THRESHOLD=0.4"
-```
+Likely causes:
+- Missing/invalid `OPENAI_API_KEY` (auth failure).
+- OpenAI plugin missing from the deployed environment (install `livekit-agents[openai]`).
+- Invalid `OPENAI_REALTIME_VOICE` (if set).
 
 ### B) Session closes due to participant disconnect
 Symptom in `lk agent logs`:
@@ -129,21 +120,6 @@ Symptom in `lk agent logs`:
 
 Backend client code:
 - [`BackendToolsClient.call_tool`](../../livekit_agent/backend_tools_client.py#L69)
-
-### D) Tool-LLM timeouts while parsing `then_action` (Gemini 504s)
-Symptom in `lk agent logs`:
-- `tool LLM stream failed; falling back to regex parsing`
-- `then_action parsing failed; falling back to prompt`
-- (sometimes) `APIStatusError ... status_code=504 ... DEADLINE_EXCEEDED`
-
-Where this happens:
-- `then_action` parsing: [`VapiAdapterAgent._tool_calls_from_instruction`](../../livekit_agent/agent.py#L389)
-
-Fix knobs (agent secrets):
-- `GOOGLE_LLM_TIMEOUT_S` (defaults to `15.0`)
-- `GOOGLE_LLM_MAX_RETRY` (defaults to `3`)
-- `GOOGLE_LLM_RETRY_INTERVAL_S` (defaults to `2.0`)
-- `GOOGLE_LLM_MODEL` (model choice)
 
 ## 4) Railway logs: confirm tools traffic + backend errors
 ```bash
@@ -173,7 +149,7 @@ Interpretation:
 
 ## 5) Security follow-up (don’t skip)
 Some upstream exceptions can include request headers in their message. The agent adds basic redaction:
-- [`_redact_secrets`](../../livekit_agent/agent.py#L35)
+- [`_redact_secrets`](../../livekit_agent/agent.py)
 
 If you ever saw an API key/token in logs, rotate that credential.
 

@@ -17,8 +17,9 @@
 ## Quick commands (copy/paste)
 - Agent tests (default): `python -m pytest -q`
 - API server tests (explicit): `python -m pytest -q api_server/tests`
-- Offline evals: `python -m livekit_agent.evals`
 - Run agent (console): `python -m livekit_agent.agent console`
+- OpenAI Realtime audio smoke (no mic): `./scripts/run_openai_realtime_audio_smoke.sh`
+- Customer lookup smoke (no mic; hits backend DB): `./scripts/run_openai_realtime_customer_lookup_smoke.sh --phone-number "305 555 0123"`
 - Run tools backend (in-memory DB): `TOOLS_TOKEN=dev-secret USE_IN_MEMORY_DB=1 python -m uvicorn api_server.server.fastapi_app:app --host 127.0.0.1 --port 8000`
 - Docker (agent worker): `docker compose up --build`
 
@@ -26,17 +27,16 @@
 - **Backend tools endpoint:** agent POSTs to `BACKEND_TOOLS_URL` (default ends with `/tools`) and expects a v2 response with `results[]` keyed by `tool_call_id`. See `docs/documentations/api-server.md`.
 - **Auth required:** `POST /tools` requires `X-TOOLS-TOKEN` header (env `TOOLS_TOKEN`).
 - **Tool args vs call_id:** backend uses `call.id` as the call ID (not a tool arg). See `docs/documentations/api-server.md`.
-- **Tool param name:** current backend expects `last_user_message` for `get_case_status`. Some exports use `user_message` (not source of truth). See `docs/documentations/vapi-export.md`.
+- **Tool param name:** backend expects `last_user_message` for `get_case_status`.
 
 ## Common gotchas (high-signal)
 - `pytest.ini` only targets `livekit_agent/tests` (easy to miss failing `api_server/tests`).
-- `squad/assistants/service_collection.json` includes a `call_id` tool param, but backend derives call ID from the payload.
-- `vapi_export/` is historical; don’t treat it as current tool schema.
+- Backend derives `call_id` from the `/tools` payload (`call.id`), not from tool arguments.
 
 ## Module docs
 - [`docs/documentations/squad-assistants.md`](./squad-assistants.md)
 - [`docs/documentations/database-and-migrations.md`](./database-and-migrations.md)
-- [`docs/documentations/vapi-export.md`](./vapi-export.md)
 - [`docs/documentations/testing-and-evals.md`](./testing-and-evals.md)
+- [`docs/documentations/tech-copilot-comparison.md`](./tech-copilot-comparison.md)
 - [`docs/documentations/livekit-webrtc-debugging.md`](./livekit-webrtc-debugging.md)
 - [`docs/documentations/debug.md`](./debug.md)

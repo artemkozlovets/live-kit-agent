@@ -12,8 +12,9 @@ def test_health_env_flags() -> None:
     data = response.json()
 
     assert set(data.keys()) == {
-        "google_api_key_loaded",
-        "gemini_api_key_loaded",
-        "gemini_guard_api_key_loaded",
+        "tools_token_configured",
+        "database_url_configured",
+        "session_reports_token_configured",
+        "local_observability_enabled",
     }
     assert all(isinstance(value, bool) for value in data.values())

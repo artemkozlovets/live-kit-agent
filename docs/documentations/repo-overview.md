@@ -9,11 +9,10 @@
 - **Runtime:** `livekit_agent/` (agent worker) ⇄ `api_server/` (tools backend).
 - **Specs/config:** `squad/assistants/` is the source of tool schemas that the agent loads.
 - **DB:** schema changes live in `migrations/`.
-- **Exports:** `vapi_export/` is historical reference (not source of truth).
 
 ## Runtime flow (happy path)
 1. LiveKit starts the agent worker (`livekit_agent/agent.py`).
-2. Agent uses **OpenAI Realtime** by default (`AGENT_ENGINE=openai_realtime`).
+2. Agent uses **OpenAI Realtime**.
 3. Each user turn:
    - agent calls `get_case_status(last_user_message=...)` via `POST /tools`
    - backend returns the current state + guardrails (missing fields, next action)
@@ -36,7 +35,6 @@
 - `api_server/` — FastAPI server (implements `POST /tools`).
 - `squad/assistants/` — assistant JSON + `.prompt.md` instructions (also used for tool schema loading).
 - `migrations/` — SQL migrations (Postgres).
-- `vapi_export/` — exported snapshots from Vapi (reference only).
 - `docs/instructions/` — operational runbooks (logs, Railway CLI, etc.).
 
 ## Primary entry points (start here when debugging)
@@ -51,14 +49,13 @@
 ## Run/verify (copy/paste)
 - Agent tests (default): `python -m pytest -q`
 - All tests (agent + backend): `./scripts/test_all.sh`
-- Offline evals: `python -m livekit_agent.evals`
 - Run agent (console): `python -m livekit_agent.agent console`
+- OpenAI Realtime audio smoke (no mic): `./scripts/run_openai_realtime_audio_smoke.sh`
 - Run tools backend (in-memory DB): `TOOLS_TOKEN=dev-secret USE_IN_MEMORY_DB=1 python -m uvicorn api_server.server.fastapi_app:app --host 127.0.0.1 --port 8000`
 - Docker (agent worker): `docker compose up --build`
 
 ## Gotchas (high-signal)
 - `pytest.ini` only runs `livekit_agent/tests` by default (API server tests are separate).
-- Some Vapi exports use `user_message` while current backend expects `last_user_message` for `get_case_status`.
 - `docker-compose.yml` currently runs the agent worker service (not the API server).
 
 ## Related docs

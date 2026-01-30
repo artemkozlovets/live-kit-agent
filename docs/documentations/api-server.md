@@ -101,6 +101,5 @@ Notes:
 
 ## Related docs
 - `docs/specs/openai_realtime-spec.md`
-- `docs/openai_realtime-tdd-plan.md`
 - `docs/documentations/livekit-agent.md`
 - `docs/documentations/testing-and-evals.md`

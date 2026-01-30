@@ -20,15 +20,28 @@ def test_get_case_status_fast_extractor_runs_when_gemini_disabled(monkeypatch) -
 
     import api_server.vapi.handlers.case_status as case_status_handler
 
-    monkeypatch.setenv("GET_CASE_STATUS_GEMINI_CLASSIFICATION", "0")
-    monkeypatch.setenv("GET_CASE_STATUS_GEMINI_EXTRACTION", "0")
-    monkeypatch.setenv("GET_CASE_STATUS_GEMINI_CORRECTIONS", "0")
-    monkeypatch.setenv("GET_CASE_STATUS_FAST_EXTRACTOR", "1")
+    called_fast = {"value": False}
 
-    async def should_not_be_called(message: str):  # noqa: ANN001
-        raise AssertionError("Gemini extractor should not be called when GET_CASE_STATUS_GEMINI_EXTRACTION=0")
+    def fake_fast_extractor(message: str):  # noqa: ANN001
+        assert "Johnson" in message
+        called_fast["value"] = True
+        return {
+            "customer": {
+                "first_name": None,
+                "last_name": "Johnson",
+                "phone": None,
+                "company": None,
+            },
+            "service": {
+                "location": None,
+                "complaint": None,
+                "unit_number": None,
+                "vin": None,
+                "vehicle_description": None,
+            },
+        }
 
-    monkeypatch.setattr(case_status_handler, "extract_customer_service_info", should_not_be_called)
+    monkeypatch.setattr(case_status_handler, "extract_customer_service_info_fast", fake_fast_extractor)
 
     call_id = "call-get-case-status-fast-mode"
     session_store.clear(call_id)
@@ -59,6 +72,7 @@ def test_get_case_status_fast_extractor_runs_when_gemini_disabled(monkeypatch) -
         assert response_data["results"][0]["ok"] is True
         parsed_result = response_data["results"][0]["result"]
 
+        assert called_fast["value"] is True
         assert parsed_result["customer"]["last_name"] == "Johnson"
         assert parsed_result["missing_fields"] == ["first_name", "phone"]
     finally:

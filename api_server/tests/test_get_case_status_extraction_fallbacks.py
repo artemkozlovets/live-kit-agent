@@ -48,9 +48,6 @@ def test_get_case_status_tools_v2_uses_fast_extractor(monkeypatch) -> None:
 
     called_fast = {"value": False}
 
-    async def fake_gemini_extractor(message: str):  # noqa: ANN001
-        raise AssertionError(f"Gemini extraction should not be called for /tools (message={message!r})")
-
     def fake_fast_extractor(message: str):  # noqa: ANN001
         assert "Johnson" in message
         called_fast["value"] = True
@@ -70,7 +67,6 @@ def test_get_case_status_tools_v2_uses_fast_extractor(monkeypatch) -> None:
             },
         }
 
-    monkeypatch.setattr(case_status_handler, "extract_customer_service_info", fake_gemini_extractor)
     monkeypatch.setattr(case_status_handler, "extract_customer_service_info_fast", fake_fast_extractor)
 
     call_id = "call-get-case-status-fallback-fast-extractor"

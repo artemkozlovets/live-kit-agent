@@ -1,2 +1,1 @@
-"""LiveKit agent service (Milestone 1) for Vapi→LiveKit migration."""
-
+"""LiveKit agent service using OpenAI Realtime."""

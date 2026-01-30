@@ -116,15 +116,9 @@ def health_check() -> dict[str, str]:
 @app.get("/health/env")
 def env_health_check() -> dict[str, bool]:
     """Report whether optional env vars are loaded (no secrets)."""
-    # Note: backend "Gemini" features use the Google Generative Language API key. We
-    # support both variable names to reduce local dev confusion.
-    gemini_api_key_present = bool(
-        (os.getenv("GEMINI_API_KEY") or "").strip()
-        or (os.getenv("GOOGLE_API_KEY") or "").strip()
-        or (os.getenv("GEMINI_GUARD_API_KEY") or "").strip()
-    )
     return {
-        "google_api_key_loaded": bool(os.getenv("GOOGLE_API_KEY")),
-        "gemini_api_key_loaded": gemini_api_key_present,
-        "gemini_guard_api_key_loaded": bool(os.getenv("GEMINI_GUARD_API_KEY")),
+        "tools_token_configured": bool((os.getenv("TOOLS_TOKEN") or "").strip()),
+        "database_url_configured": bool((os.getenv("DATABASE_URL") or "").strip()),
+        "session_reports_token_configured": bool((os.getenv("SESSION_REPORTS_TOKEN") or "").strip()),
+        "local_observability_enabled": bool((os.getenv("LOCAL_OBSERVABILITY_DIR") or "").strip()),
     }

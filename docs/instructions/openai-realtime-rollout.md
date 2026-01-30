@@ -1,4 +1,4 @@
-# OpenAI Realtime Rollout (Smoke + Rollback)
+# OpenAI Realtime Rollout (Smoke Checklist)
 
 Last updated: 2026-01-28
 
@@ -7,7 +7,7 @@ This repo runs:
 - a **LiveKit agent** that uses **OpenAI Realtime** by default, and
 - a **FastAPI tools backend** that exposes `POST /tools` (v2) with auth.
 
-This runbook is the smallest checklist to prove the stack is healthy end-to-end, and to roll back safely if needed.
+This runbook is the smallest checklist to prove the stack is healthy end-to-end.
 
 ## Preconditions (must be true)
 - Backend has `TOOLS_TOKEN` set (agent ↔ backend shared secret).
@@ -50,6 +50,33 @@ Talk through:
 3) Summary + explicit “yes”
 4) Booking succeeds
 
+### No-mic OpenAI Realtime audio smoke (OpenAI-only)
+Use this when you want to validate **“does OpenAI Realtime actually produce audio?”**
+without mic permissions, LiveKit rooms, or the tools backend:
+
+```bash
+./scripts/run_openai_realtime_audio_smoke.sh \
+  --turn "Please say: 'OpenAI realtime audio smoke test OK.'" \
+  --modalities "text,audio"
+```
+
+Expected:
+- `assistant.wav` exists and contains audible speech.
+
+### No-mic customer lookup smoke (backend DB)
+Use this when you want to validate **“does `check_customer` find the caller in the DB?”**
+without mic permissions or LiveKit rooms:
+
+```bash
+./scripts/run_openai_realtime_customer_lookup_smoke.sh \
+  --phone-number "+1 (305) 555-0123" \
+  --expect-found true
+```
+
+Expected:
+- exit code `0`
+- `check_customer.json` shows `"found": true`
+
 ## 3) Staging telephony smoke (high-signal)
 - Place an inbound PSTN call and confirm:
   - a LiveKit room is created
@@ -61,12 +88,10 @@ Talk through:
 
 Tip: correlate systems by **room name** (call_id).
 
-## Rollback (kill switch)
-Set `AGENT_ENGINE=legacy` on the agent service to fall back to the previous Deepgram+Cartesia pipeline.
-
-Notes:
-- Legacy mode requires `DEEPGRAM_API_KEY` and `CARTESIA_API_KEY` (and optionally `GOOGLE_API_KEY`).
-- `/vapi/tools` is removed (404); legacy mode still calls the `/tools` endpoint.
+## Rollback (safety)
+This repo is intentionally **OpenAI Realtime-only** (no legacy STT/TTS pipeline). If you need to roll back quickly:
+- Disable dispatch / route calls away from the LiveKit agent temporarily.
+- Redeploy the last-known-good agent version and/or backend version.
 
 ## Verification (repo-level)
 - Full suite: `./scripts/test_all.sh`
@@ -75,4 +100,3 @@ Notes:
 - `docs/documentations/livekit-agent.md`
 - `docs/documentations/api-server.md`
 - `docs/documentations/debug.md`
-- `docs/openai_realtime-tdd-plan.md` (Phase 8 checklist)

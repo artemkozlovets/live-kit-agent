@@ -6,8 +6,8 @@
 ---
 
 ## Big picture (what problem are we solving?)
-Our current call runtime works, but it can feel **rigid** (turn-taking/barge‑in friction) because we coordinate multiple moving parts:
-- **STT** (Deepgram) + **TTS** (Cartesia) + realtime transport (LiveKit)
+Before this cutover, our call runtime could feel **rigid** (turn-taking/barge‑in friction) because we coordinated multiple moving parts:
+- **STT** + **TTS** vendors + realtime transport (LiveKit)
 - backend tool loop + slot-filling guardrails (`get_case_status`, etc.)
 
 This spec moves the *voice/dialogue layer* to **OpenAI Realtime** to improve conversational naturalness, while keeping our **backend-first guardrails** and existing business tooling.
@@ -24,13 +24,12 @@ Replace the current “STT + (helper LLM) + TTS” stack with **OpenAI Realtime*
 
 ## Current state (today)
 - Agent voice pipeline:
-  - `livekit_agent/agent.py` creates an `AgentSession(...)` using Deepgram STT + Cartesia TTS (`turn_detection="stt"`).
+  - `livekit_agent/agent.py` starts an OpenAI Realtime session (Realtime-native turn taking).
 - Tools backend:
-  - External endpoint: `POST /vapi/tools` (mounted from `api_server/vapi/router.py`).
-  - Slot-filling is opt-in (`AGENT_SLOT_FILLING=1` + backend flags) and works end-to-end.
-- Gemini usage:
-  - The backend `get_case_status` can make Gemini calls by default (classification/extraction/corrections).
-  - The agent can also use Gemini as an optional “tool LLM” to parse `then_action`.
+  - External endpoint: `POST /tools` (provider-agnostic, v2).
+  - Slot-filling guardrails live in the backend `get_case_status` tool.
+- Vendor constraints:
+  - Calls complete end-to-end without Deepgram/Cartesia/Gemini keys present.
 
 ## Pain points (observed)
 - Conversation feels “rigid” (turn-taking/barge-in friction; skipped user input; “speech scheduling is paused”).
@@ -53,7 +52,7 @@ This spec intentionally **skips** the “Vapi-shaped adapter milestone” from `
    - The backend remains the final authority (reject unsafe or invalid actions).
 3. **Vendor removal (what “remove X from runtime” means)**:
    - **Agent runtime**: remove Deepgram + Cartesia + the optional Gemini “tool LLM” from the default path.
-   - **Backend runtime**: disable/remove Gemini-based extraction/classification so calls do not require Google/Gemini to complete.
+   - **Backend runtime**: remove Gemini-based extraction/classification so calls do not require Google/Gemini to complete.
 4. **Cutover strategy**: big-bang **within this repo** (update code/tests/configs together), then delete the legacy `/vapi/*` external surface.
 
 ### Rationale
@@ -169,13 +168,13 @@ Alternative (nice-to-have later):
 ## Config / dependencies (expected changes)
 Agent:
 - Add: `OPENAI_API_KEY` (and a model/voice selection env var if we want to make those configurable).
-- Remove from the default production path: `DEEPGRAM_API_KEY`, `CARTESIA_API_KEY`, and the optional `GOOGLE_API_KEY`/`GEMINI_API_KEY` used for “tool LLM” parsing.
+- Remove from runtime: `DEEPGRAM_API_KEY`, `CARTESIA_API_KEY`, and the optional `GOOGLE_API_KEY`/`GEMINI_API_KEY` used for the legacy tool-LLM parsing path.
 - Dependencies: add the LiveKit OpenAI Realtime plugin extra (Python: `livekit-agents[openai]`).
   - Note: `modalities=["text"]` + separate TTS is an optional fallback for history-heavy sessions, but must not be required for MVP or tests.
 
 Backend:
 - Add: an auth mechanism for `POST /tools` (for example `X-TOOLS-TOKEN`).
-- Default off (or delete): `GET_CASE_STATUS_GEMINI_*` features so calls don’t depend on Gemini.
+- Remove: `GET_CASE_STATUS_GEMINI_*` features so calls don’t depend on Gemini.
 
 ## Requirements
 

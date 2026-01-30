@@ -30,7 +30,7 @@
 - Tool schemas in these JSON files should match backend expectations. If they drift:
   - the agent’s tool LLM may try to call tools that don’t exist, or
   - parameters may be ignored/mismatched.
-- Some assistant JSONs include `call_id` as a tool parameter for `get_case_status`, but the backend derives call id from the payload (`call.id`).
+- The backend derives call id from the payload (`call.id`), not from tool arguments.
 
 ## Related docs
 - `docs/documentations/livekit-agent.md`

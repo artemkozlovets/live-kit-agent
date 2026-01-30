@@ -9,11 +9,7 @@ services:
       BACKEND_TOOLS_URL: ${BACKEND_TOOLS_URL:-https://call-agent-development.up.railway.app/tools}
       TOOLS_TOKEN: ${TOOLS_TOKEN}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
-      AGENT_ENGINE: ${AGENT_ENGINE:-openai_realtime}
       OPENAI_REALTIME_VOICE: ${OPENAI_REALTIME_VOICE:-}
-      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY}
-      CARTESIA_API_KEY: ${CARTESIA_API_KEY}
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
 
       # Observability / runtime
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -23,10 +19,6 @@ services:
       PORT: 8081
       PROMETHEUS_PORT: 9090
       PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus
-
-      # Optional TTS tuning
-      CARTESIA_SPEED: ${CARTESIA_SPEED:-}
-      CARTESIA_TEXT_PACING: ${CARTESIA_TEXT_PACING:-}
     ports:
       - "8081:8081"
       - "9090:9090"

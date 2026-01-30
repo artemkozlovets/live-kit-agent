@@ -214,6 +214,11 @@ Look for:
 - `AgentSession error`
 - `AgentSession closing`
 
+### Prompt / behavior checks
+- OpenAI Realtime runtime instructions live in `livekit_agent/openai_realtime_agent.py`
+  (the `instructions=...` string). Changes in `squad/assistants/*.prompt.md` do **not**
+  affect the Realtime agent.
+
 ## Backend tools (Railway)
 Start with low-noise log filters:
 ```bash
@@ -233,13 +238,12 @@ Docs:
 These env vars increase signal or timing detail:
 - `LOG_LEVEL=DEBUG` (agent + backend verbosity)
 - `LOG_PII=1` (disables masking of call IDs/phone numbers; avoid in prod)
-- `VAPI_TOOLS_LOG_TIMING=1` (tools timing logs in API server)
-- `GOOGLE_LLM_TIMEOUT_S=...` (agent: tool parsing timeout; defaults to 15s)
-- `GOOGLE_LLM_MAX_RETRY=...` (agent: tool parsing retries; defaults to 3)
-- `GOOGLE_LLM_RETRY_INTERVAL_S=...` (agent: tool parsing retry interval; defaults to 2s)
+- `VAPI_TOOLS_LOG_TIMING=1` (tools timing logs in API server; legacy name)
 - `SESSION_REPORTS_URL=...` (agent: enables session report POST on session end)
 - `SESSION_REPORTS_TOKEN=...` (agent + backend: bearer auth for session report endpoint)
 - `LOCAL_OBSERVABILITY_DIR=...` (local: persist logs + session reports to disk)
+- `AGENT_BACKEND_GUARDRAILS=false` (agent: OpenAI-first; skips per-turn `get_case_status`)
+- `OPENAI_REALTIME_VOICE=...` (agent: optional voice selection)
 
 When `LOCAL_OBSERVABILITY_DIR` is set:
 - Backend writes:
@@ -259,9 +263,9 @@ One-command local run (backend + audio console + saved artifacts):
 ```
 
 Agent behavior gotchas:
-- By default, the agent won't call `get_case_status` until preflight completes (callback number validated + customer check).
-- If you run with `AGENT_FAST_INTAKE=1` (the local helper script sets this by default), the agent will greet and call `get_case_status` immediately on the first user turn.
-- For web calls (no SIP), set `SKIP_CALLBACK_PREFLIGHT=1` so the agent can proceed.
+- **Backend-first vs OpenAI-first**:
+  - Default (`AGENT_BACKEND_GUARDRAILS=true`): agent calls `get_case_status` on every user turn.
+  - OpenAI-first (`AGENT_BACKEND_GUARDRAILS=false`): agent calls tools only when the model asks.
 
 Local backend (in-memory DB) for quick reproductions:
 ```bash
@@ -269,7 +273,7 @@ USE_IN_MEMORY_DB=1 python -m uvicorn api_server.server.fastapi_app:app --host 12
 ```
 
 ## Deterministic repro (fast, no LiveKit/Railway required)
-When debugging logic (not networking), use tests/evals:
+When debugging logic (not networking), use tests:
 
 ```bash
 # Agent unit/integration-ish tests (default pytest target):
@@ -278,9 +282,6 @@ python -m pytest -q
 # Full repo tests (agent + api_server):
 ./scripts/test_all.sh
 
-# Offline eval scenarios (no network):
-python -m livekit_agent.evals --list
-python -m livekit_agent.evals --scenario preflight_no_sip_speak_first
 ```
 
 ## When asking for help (keep it short)
@@ -292,10 +293,9 @@ Provide:
 - Railway log snippet (filtered) or agent log excerpt
 
 ## Failure modes / gotchas (high-signal)
-- **Symptom:** agent stops mid-turn or seems “silent” after a backend `then_action`  
-  **Likely cause:** Gemini tool-LLM timed out (often `APIStatusError ... status_code=504 DEADLINE_EXCEEDED`) while converting `then_action` → tool calls  
-  **Where to look:** `lk agent logs --log-type deploy` for `tool LLM stream failed` / `then_action parsing failed`  
-  **Fix:** increase `GOOGLE_LLM_TIMEOUT_S` (and/or switch `GOOGLE_LLM_MODEL`), then redeploy agent
+- **Symptom:** agent responses get cancelled or feel “stuck” mid-turn  
+  **Likely cause:** barge-in/echo (speaker output re-triggers the mic)  
+  **Fix:** use headphones, lower speaker volume, verify input/output devices (`python -m livekit_agent.agent console --list-devices`)
 - **Symptom:** Railway shows `/tools` 400 with `Invalid JSON payload`  
   **Likely cause:** a caller hit `/tools` with an empty or non-JSON body  
   **Fix:** ensure callers send a valid JSON body and include `X-TOOLS-TOKEN` (see `api_server/tools/router.py`)

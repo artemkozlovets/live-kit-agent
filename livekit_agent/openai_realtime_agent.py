@@ -79,8 +79,12 @@ class OpenAIRealtimeAgent(Agent):
                 "parameters": parameters if isinstance(parameters, dict) else {},
             }
 
-            async def _tool(raw_arguments: dict[str, object], context: Any, *, _name: str = name) -> dict[str, Any]:
-                _ = context
+            async def _tool(
+                raw_arguments: dict[str, object],
+                context: Any | None = None,
+                *,
+                _name: str = name,
+            ) -> dict[str, Any]:
                 return await self.forward_tool(tool_name=_name, tool_arguments=dict(raw_arguments))
 
             tools.append(function_tool(_tool, raw_schema=raw_schema))
@@ -103,6 +107,7 @@ class OpenAIRealtimeAgent(Agent):
                 "Guardrails:\n"
                 "- If you receive a system message containing JSON like {\"case_status\": ...}, treat it as authoritative backend guidance.\n"
                 "- If you receive a system message containing JSON like {\"tool_prefetch\": ...}, treat it as authoritative tool results.\n"
+                "- Never answer general knowledge or trivia. If asked unrelated questions, refuse briefly and immediately redirect to roadside assistance.\n"
             ),
             tools=tools,
         )

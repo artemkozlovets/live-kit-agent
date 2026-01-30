@@ -10,7 +10,7 @@ This repo now supports a local “record everything” workflow via:
 - `python -m livekit_agent.agent console --record` (LiveKit SDK console recordings)
 - `./scripts/run_local_audio_console.sh` (one-command: backend + audio console + artifacts)
 
-Important: the agent uses OpenAI Realtime by default. Set `AGENT_ENGINE=legacy` to run the previous Deepgram+Cartesia pipeline.
+Important: this repo is OpenAI Realtime-only. Ensure `OPENAI_API_KEY` is set.
 
 ## Quick start (recommended)
 Run backend + agent locally, in audio mode, and save logs/artifacts to a per-run folder:
@@ -19,17 +19,12 @@ Run backend + agent locally, in audio mode, and save logs/artifacts to a per-run
 ./scripts/run_local_audio_console.sh
 ```
 
-Defaults this script sets (override at invocation time if needed):
-- `AGENT_FAST_INTAKE=1` + `AGENT_GREETING="Hello, this is Sarah from AFS, how can I help?"`
-- `GET_CASE_STATUS_FAST_EXTRACTOR=1` and Gemini features **off** (`GET_CASE_STATUS_GEMINI_*=0`) for speed/determinism
+Options:
+- Run text-only console (no mic/speaker issues): `CONSOLE_MODE=text ./scripts/run_local_audio_console.sh`
+- Capture the full console output (useful when the console “drops”): `CAPTURE_CONSOLE_LOG=1 ./scripts/run_local_audio_console.sh`
 
-Enable Gemini (networked) for `get_case_status` if you want to test it:
-```bash
-GET_CASE_STATUS_GEMINI_CLASSIFICATION=1 \
-GET_CASE_STATUS_GEMINI_EXTRACTION=1 \
-GET_CASE_STATUS_GEMINI_CORRECTIONS=1 \
-./scripts/run_local_audio_console.sh
-```
+Defaults this script sets (override at invocation time if needed):
+- `AGENT_BACKEND_GUARDRAILS=1` (agent calls `get_case_status` on every user turn)
 
 Artifacts are written under:
 - `local-observability/run-<timestamp>/`
@@ -40,26 +35,169 @@ You get:
 - `backend.tools.jsonl` (one JSONL event per `/tools` request with tool names + result keys)
 - `session-reports/*.json` (persisted session reports ingested at session end)
 - `backend.stdout.log` (uvicorn stdout/stderr)
+- `console.tty.log` (only when `CAPTURE_CONSOLE_LOG=1`; captures the interactive console UI output)
+
+Note: `backend.tools.jsonl` is created lazily (it won’t exist until the first successful `POST /tools`).
 
 LiveKit console recordings (when `--record` is on) also go to:
 - `console-recordings/session-*/session_report.json`
 
+### If backend logs/tools are missing (port already in use)
+If your `<RUN_DIR>/backend.stdout.log` contains:
+- `error while attempting to bind on address ('127.0.0.1', 8000): address already in use`
+
+…then the script could not start its own backend (something else is already listening on that port).
+
+What you’ll see:
+- `<RUN_DIR>/backend.tools.jsonl` might not exist, even though the agent is successfully calling tools.
+- Tool traces will be written wherever the *other* backend set `LOCAL_OBSERVABILITY_DIR` (often an older `local-observability/run-*` folder).
+
+Fix:
+```bash
+# Find what is listening on port 8000 (macOS):
+lsof -nP -iTCP:8000 -sTCP:LISTEN
+
+# Either stop it, or run this script on a different port:
+BACKEND_PORT=8001 ./scripts/run_local_audio_console.sh
+```
+
+## Codex terminal workflow (recommended)
+When debugging locally, the “best” workflow is **two terminals**:
+
+1) **Terminal A: run the local stack and leave it running**
+```bash
+./scripts/run_local_audio_console.sh
+```
+
+This script:
+- starts the tools backend on `http://127.0.0.1:8000` by default (override with `BACKEND_PORT=...`)
+- starts the agent in LiveKit **console** mode
+- writes artifacts under `local-observability/run-<timestamp>/`
+
+Source: [`scripts/run_local_audio_console.sh`](../../scripts/run_local_audio_console.sh#L4-L70)
+
+2) **Terminal B: verify + inspect without scrolling**
+```bash
+# Backend is up?
+curl -fsS http://127.0.0.1:8000/health
+
+# Tail the latest local run logs (replace <RUN_DIR> with the path printed by the script):
+tail -n 200 "<RUN_DIR>/agent.log.jsonl"
+tail -n 200 "<RUN_DIR>/backend.stdout.log"
+```
+
+### If it “lags” after you say a phone number (OpenAI Realtime)
+If the agent seems stuck after you provide a phone number, the fastest way to determine where it’s “stuck” is the agent log.
+
+Check `<RUN_DIR>/agent.log.jsonl`:
+- If you see `executing tool` for `validate_phone` / `check_customer` and then `tools execution completed`, the backend tool loop is working.
+- If you see lots of:
+  - `OpenAI Realtime API response done but not complete with status: cancelled`
+
+…then the assistant’s responses are being interrupted/cancelled (commonly: barge-in/echo where speaker output re-triggers the mic).
+
+Fixes that usually help:
+- Use headphones (prevents speaker → mic feedback).
+- Lower speaker volume.
+- Verify the output device (`python -m livekit_agent.agent console --list-devices` then `--output-device ...`).
+
+### If the console “drops” (process exits / terminal session dies)
+Console mode is interactive (TTY). If it exits unexpectedly:
+- Check `<RUN_DIR>/agent.log.jsonl` for a traceback or fatal error.
+- If you ran with `CAPTURE_CONSOLE_LOG=1`, check `<RUN_DIR>/console.tty.log` for the last UI output.
+- If the only logs are “starting agent session” and nothing else, it likely exited before receiving any input.
+
+### If audio is flaky (stay in audio)
+When debugging audio issues, keep the console in audio mode and isolate the layer:
+- **TTS (speaking):** run the automated Realtime audio smoke test (no mic) to confirm the model is producing audible output.
+- **Mic (listening):** verify macOS mic permission for your terminal and select the correct input/output devices (`--list-devices` / `--input-device` / `--output-device`).
+
+### Automated OpenAI Realtime audio smoke (no mic)
+This verifies the **OpenAI Realtime “speaking” path** without:
+- microphone / device permissions
+- LiveKit rooms / WebRTC
+- the tools backend
+
+How:
+```bash
+./scripts/run_openai_realtime_audio_smoke.sh \
+  --turn "Please say: 'OpenAI realtime audio smoke test OK.'" \
+  --modalities "text,audio"
+```
+
+Artifacts are saved under `local-observability/run-*-openai-realtime-audio-smoke/`:
+- `assistant.wav` (agent audio output)
+- `transcript.json` (user/assistant text + segment boundaries)
+- `meta.json` (run config + audio stats)
+
+If it fails with “No audio frames were captured”:
+- ensure `OPENAI_API_KEY` is set
+- ensure `--modalities` includes `audio`
+- try setting `--voice` (or `OPENAI_REALTIME_VOICE`)
+
+### Automated customer lookup smoke (no mic, hits your DB)
+This verifies the “is this phone number in the database?” path by calling:
+- `validate_phone`
+- `check_customer`
+
+It also optionally generates OpenAI Realtime audio output (`assistant.wav`) so you can confirm speech still works.
+
+Example:
+```bash
+./scripts/run_openai_realtime_customer_lookup_smoke.sh \
+  --phone-number "305 555 0123" \
+  --expect-found true
+```
+
+Artifacts are saved under `local-observability/run-*-openai-realtime-customer-lookup-smoke/`:
+- `validate_phone.json`
+- `check_customer.json`
+- `result.json`
+- `assistant.wav` (when `--with-audio true`, default)
+
+If you only want the DB lookup (no OpenAI call), run:
+```bash
+./scripts/run_openai_realtime_customer_lookup_smoke.sh \
+  --phone-number "305 555 0123" \
+  --with-audio false
+```
+
+### If OpenAI Realtime won’t start (missing plugin/key)
+The default engine is `openai_realtime`, which requires:
+- `OPENAI_API_KEY` set in your environment
+- the LiveKit OpenAI plugin installed (`livekit-agents[openai]`)
+
+If you see errors like “OpenAI Realtime plugin not installed”, install the extra:
+```bash
+.venv/bin/python -m pip install "livekit-agents[openai]"
+```
+
+Source: the plugin is imported lazily in [`livekit_agent/openai_realtime_session.py`](../../livekit_agent/openai_realtime_session.py#L8-L28).
+
+### Pick the right mic/speaker (device selection)
+```bash
+# List devices (IDs + names)
+python -m livekit_agent.agent console --list-devices
+
+# Force an input/output device (use IDs or name substrings)
+python -m livekit_agent.agent console --input-device 0 --output-device 1
+```
+
 ## Debug locally (agent) — options + tradeoffs
 Debugging is fastest when you isolate the layer you care about. A good default progression is:
-1) text-only (tests/evals) → 2) terminal voice → 3) real rooms/audio → 4) container.
+1) tests → 2) terminal voice → 3) real rooms/audio → 4) container.
 
-### 1) Offline tests + offline evals (no LiveKit, no audio)
+### 1) Tests (no LiveKit, no audio)
 How:
 ```bash
 python -m pytest -q
-python -m livekit_agent.evals --list
-python -m livekit_agent.evals --scenario preflight_no_sip_speak_first
+./scripts/test_all.sh
 ```
 Pros:
 - Fastest iteration loop and easiest to debug with breakpoints.
 - Deterministic and cheap (no WebRTC/mic/device issues).
 Cons:
-- Does not exercise WebRTC, mic permissions, or the STT/TTS pipeline.
+- Does not exercise WebRTC, mic permissions, or realtime audio behavior.
 
 ### 2) Run the tools backend locally (then point the agent at it)
 How:
@@ -109,7 +247,7 @@ Pros:
 - Agent runs fully locally (great for breakpoints/logging).
 - No LiveKit server required.
 Cons:
-- Still depends on STT/TTS providers (Deepgram/Cartesia) unless you change config.
+- Still depends on OpenAI Realtime (network + OpenAI API key).
 - Terminal audio can be finicky and is not identical to real rooms.
 
 ### 4) Agent `dev` mode against LiveKit Cloud (real rooms, local code)
@@ -140,7 +278,7 @@ Pros:
 - Great for debugging without any LiveKit Cloud dependencies.
 Cons:
 - You run/maintain the local server (ports, networking).
-- STT/TTS still hit external APIs unless swapped/mocked.
+- OpenAI Realtime still hits external APIs (network required).
 
 ### 6) Deterministic audio publish via CLI (no mic/browser)
 Use this when the agent “joins but is silent” and you want to remove mic/app variables.
@@ -179,7 +317,7 @@ Cons:
 - Breakpoints can disrupt realtime sessions; logs can be noisy.
 
 ## What we observed (2026-01-25)
-- **Audio console mode works locally**: The agent starts in console mode and uses OpenAI Realtime by default (set `AGENT_ENGINE=legacy` for Deepgram+Cartesia).
+- **Audio console mode works locally**: The agent starts in console mode and uses OpenAI Realtime.
 - **Backend calls succeed**: `validate_phone`, `check_customer`, and `get_case_status` return `200 OK` from the local tools backend (`127.0.0.1:8000`).
 - **“Lag” root cause**: `get_case_status` returns:
   - `response_mode: "tool_first"`
@@ -205,7 +343,7 @@ To make local debugging less painful and reduce “stuck/silent” behavior:
 curl -sS http://127.0.0.1:8000/tools \
   -H "Content-Type: application/json" \
   -H "X-TOOLS-TOKEN: dev-secret" \
-  -d '{"call":{"id":"debug-call","customer":{"number":"+13053179840"}},"tool_calls":[{"id":"tool-1","name":"get_case_status","arguments":{"last_user_message":"I have a flat tire.","expected_field":null}}]}' | jq .
+  -d '{"call":{"id":"debug-call","customer":{"number":"+13055550123"}},"tool_calls":[{"id":"tool-1","name":"get_case_status","arguments":{"last_user_message":"I have a flat tire.","expected_field":null}}]}' | jq .
 ```
 Expected output:
 - Returns a JSON tool result (no HTTP error).
@@ -213,8 +351,8 @@ Expected output:
 
 ## Implication
 If the agent appears “stuck” locally, it usually means one of:
-- You disabled fast intake (`AGENT_FAST_INTAKE=0`) and preflight isn't complete yet (callback number / customer check gate).
-- STT/TTS provider connectivity issues.
+- Backend tools are unreachable (agent can't complete the loop).
+- OpenAI Realtime responses are being interrupted/cancelled (common: speaker → mic feedback).
 - Backend is returning `response_mode="tool_first"` with an empty `immediate_message` (silence).
 
 The local artifacts in `LOCAL_OBSERVABILITY_DIR` make this easy to confirm without copy/paste.

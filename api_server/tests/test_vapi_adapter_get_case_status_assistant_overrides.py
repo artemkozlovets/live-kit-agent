@@ -277,20 +277,13 @@ def test_get_case_status_fast_path_prioritizes_location_when_vehicle_known() -> 
         app.dependency_overrides.pop(get_database_client, None)
 
 
-def test_get_case_status_fast_path_skips_gemini_calls(monkeypatch) -> None:
-    # Arrange
+def test_get_case_status_fast_path_skips_network_dependencies() -> None:
+    """Regression guard: known-customer overrides must not require a DB or network."""
     from api_server.server.fastapi_app import app
     from api_server.vapi.router import session_store
-    import api_server.vapi.handlers.case_status as case_status_handler
 
-    async def should_not_call(*_args, **_kwargs):  # noqa: ANN001, ANN002
-        raise AssertionError("Gemini should be skipped for verified customers")
-
-    call_id = "call-get-case-status-fast-path-no-gemini"
+    call_id = "call-get-case-status-fast-path-no-network"
     session_store.clear(call_id)
-
-    monkeypatch.setattr(case_status_handler, "classify_message", should_not_call)
-    monkeypatch.setattr(case_status_handler, "extract_customer_service_info", should_not_call)
 
     app.dependency_overrides[get_database_client] = lambda: ExplodingDatabaseClient()
     try:
@@ -299,7 +292,7 @@ def test_get_case_status_fast_path_skips_gemini_calls(monkeypatch) -> None:
             "assistantOverrides": {
                 "variableValues": {
                     "customerName": "Jordan Miles",
-                    "customerId": "cust-no-gemini",
+                    "customerId": "cust-no-network",
                     "customerPhone": "+15551236666",
                     "companyName": "Fleet Ops",
                     "isKnownCustomer": "true",
@@ -307,7 +300,6 @@ def test_get_case_status_fast_path_skips_gemini_calls(monkeypatch) -> None:
             }
         }
 
-        # Act
         parsed_result = _post_get_case_status(
             test_client=test_client,
             call_id=call_id,
@@ -315,8 +307,7 @@ def test_get_case_status_fast_path_skips_gemini_calls(monkeypatch) -> None:
             tool_args={"call_id": call_id, "last_user_message": "Yes"},
         )
 
-        # Assert
-        assert parsed_result["customer"]["id"] == "cust-no-gemini"
+        assert parsed_result["customer"]["id"] == "cust-no-network"
         assert parsed_result["response_mode"] == "speak_first"
     finally:
         app.dependency_overrides.pop(get_database_client, None)
