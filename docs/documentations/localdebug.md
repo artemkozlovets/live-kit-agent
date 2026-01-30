@@ -86,6 +86,21 @@ tail -n 200 "<RUN_DIR>/agent.log.jsonl"
 tail -n 200 "<RUN_DIR>/backend.stdout.log"
 ```
 
+## Run in a background terminal (detached)
+If you want the local console running continuously in the background (so logs keep writing even when you close this terminal), start it in a detached screen session:
+
+```bash
+screen -dmS local_console bash -lc 'set -a; source .env; set +a; ./scripts/run_local_audio_console.sh'
+```
+
+Useful commands:
+- Attach to the running session: `screen -r local_console`
+- Detach from the session: press `Ctrl+A` then `D`
+- Stop it completely: `screen -S local_console -X quit`
+
+Logs/artifacts still go to the per-run folder printed by the script:
+`local-observability/run-<timestamp>/`
+
 ### If it “lags” after you say a phone number (OpenAI Realtime)
 If the agent seems stuck after you provide a phone number, the fastest way to determine where it’s “stuck” is the agent log.
 

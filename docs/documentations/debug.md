@@ -10,6 +10,9 @@ This repo has **two services** (LiveKit agent + tools backend). Debugging is fas
 - **Agent runtime** (LiveKit Cloud worker logs)
 - **Backend tools** (`POST /tools` on Railway or local FastAPI)
 
+### Automation expectation (for Codex)
+If a CLI command or quick check is needed, **run it directly** and report the result. Avoid asking the user to run commands unless you truly can't.
+
 ## The one ID that ties everything together
 In this repo, **call_id == LiveKit room name**:
 - Agent call id: `ctx.room.name`

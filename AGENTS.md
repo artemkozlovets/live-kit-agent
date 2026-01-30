@@ -48,6 +48,7 @@ When writing tests, include:
 
 - **Comment non-obvious code** and ensure everything is understandable to a mid-level developer.
 - When writing complex logic, **add an inline `# Reason:` comment** explaining the why, not just the what.
+- When you spend time researching web on how to use tools like Live Kit or OpenAI Realtime, you need to save the findings about them in docs. We're making the knowledge based for future sessions. 
 
 ### 🧠 AI Behavior Rules
 

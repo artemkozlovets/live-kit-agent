@@ -9,7 +9,7 @@
 - Full suite (agent + API server): `./scripts/test_all.sh`
 - No-mic OpenAI “speaking” check (OpenAI-only): `./scripts/run_openai_realtime_audio_smoke.sh`
 - No-mic “is this phone in the DB?” check (backend tools): `./scripts/run_openai_realtime_customer_lookup_smoke.sh --phone-number "..."`
-- Smoke artifacts land under `local-observability/openai-realtime-*/run-*/` (WAV + JSON; ignored by default via [`.gitignore`](../../.gitignore))
+- Smoke artifacts land under `local-observability/run-*-openai-realtime-*/` (WAV + JSON; ignored by default via [`.gitignore`](../../.gitignore))
 
 ## Pytest
 By default, pytest is configured to run only `livekit_agent/tests`:
@@ -41,6 +41,14 @@ Big picture: “smoke tests” here are **CLI scripts** that:
 
 If you see `sysctlbyname('hw.logicalcpu') Operation not permitted`, set `NUM_CPUS=2` in your environment.
 
+> Note: These scripts do **not** auto-load `.env`. Export env vars in your shell first
+> (or use `direnv`).
+>
+> Example (bash/zsh):
+> ```bash
+> set -a && source .env && set +a
+> ```
+
 ### 1) OpenAI Realtime Audio Smoke (OpenAI-only)
 **Goal:** verify the OpenAI Realtime plugin produces **audio output** (no backend calls).
 
@@ -65,7 +73,7 @@ If you see `sysctlbyname('hw.logicalcpu') Operation not permitted`, set `NUM_CPU
 ```
 
 **Outputs**
-- Directory: `local-observability/openai-realtime-audio-smoke/run-*/`
+- Directory: `local-observability/run-*-openai-realtime-audio-smoke/`
 - Files:
   - `assistant.wav` — the agent’s spoken output
   - `transcript.json` — user/assistant text + segment boundaries
@@ -77,8 +85,16 @@ If you see `sysctlbyname('hw.logicalcpu') Operation not permitted`, set `NUM_CPU
 - `1`: crash/misconfig (missing API key, network error, etc.)
 
 **How to verify quickly**
-- Open the WAV (macOS): `open local-observability/openai-realtime-audio-smoke/run-*/assistant.wav`
+- Open the WAV (macOS): `open local-observability/run-*-openai-realtime-audio-smoke/assistant.wav`
 - Or inspect `meta.json` for `total_samples > 0`.
+
+**Known log noise (safe to ignore)**
+- `resume_false_interruption is enabled but audio output does not support pause, it will be ignored`
+
+**Common failure messages**
+- `ERROR: OPENAI_API_KEY is required.` → your shell doesn’t have `OPENAI_API_KEY` exported.
+- `OpenAI Realtime plugin not installed...` → install extras: `pip install "livekit-agents[openai]"`
+- `ERROR: No audio frames were captured...` → `--modalities` likely missing `audio`, or the selected `--voice` is invalid.
 
 ### 2) Customer Lookup Smoke (Backend DB + optional OpenAI audio)
 **Goal:** verify a phone number is (or isn’t) in the DB by calling the backend tools:
@@ -120,8 +136,12 @@ Optionally, it also generates an OpenAI Realtime audio response (`assistant.wav`
   --with-audio false
 ```
 
+**If it fails with `TOOLS_TOKEN is required for /tools`**
+- Ensure `TOOLS_TOKEN` is set in your environment or provided via `--tools-token`.
+- If you’re relying on Railway secrets, run via `railway run --service ...` so the env is injected.
+
 **Outputs**
-- Directory: `local-observability/openai-realtime-customer-lookup-smoke/run-*/`
+- Directory: `local-observability/run-*-openai-realtime-customer-lookup-smoke/`
 - Files:
   - `validate_phone.json` — shows the normalized/E.164 number used for lookup
   - `check_customer.json` — contains `found: true|false` and `customer` when found
@@ -132,6 +152,11 @@ Optionally, it also generates an OpenAI Realtime audio response (`assistant.wav`
 - `0`: `found == expected_found`
 - `2`: mismatch (ex: expected found, but backend returned `found: false`)
 - `1`: crash/misconfig (missing token, backend unreachable, etc.)
+
+**Common failure messages**
+- `TOOLS_TOKEN is required for /tools` → set `TOOLS_TOKEN` (or pass `--tools-token`).
+- `Backend responded with HTTP 401...` → `TOOLS_TOKEN` is wrong for that backend.
+- `Backend connection failed` → `BACKEND_TOOLS_URL` is wrong/unreachable.
 
 **Running against Railway without exporting secrets**
 If your Railway backend service has `TOOLS_TOKEN` and `BACKEND_TOOLS_URL` set, you can inject them into the command with `railway run`:
