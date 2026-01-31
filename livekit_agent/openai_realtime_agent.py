@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import time
 import uuid
 from typing import Any
 
@@ -26,6 +27,73 @@ _PHONE_ANYWHERE_RE = re.compile(r"(\+?\d[\d\s\-\(\)]{8,}\d)")
 
 def _digits_only(value: str) -> str:
     return re.sub(r"\D", "", value)
+
+
+def _normalize_tel_target(value: str) -> str | None:
+    """Best-effort normalize a phone number into `+E164` digits-only form.
+
+    Reason: LiveKit SIP transfer requires a `tel:` URI with no spaces/punctuation.
+    In practice, humans often paste values like `305-555-0123` or `tel:+1 305 555 0123`.
+    """
+
+    raw = value.strip()
+    if not raw:
+        return None
+
+    digits = _digits_only(raw)
+    if not digits:
+        return None
+
+    has_plus = raw.startswith("+")
+
+    # E.164 max length is 15 digits (excluding the '+').
+    if has_plus:
+        if 10 <= len(digits) <= 15:
+            return f"+{digits}"
+        return None
+
+    # US-friendly defaults for this repo (AFS). Prefer +1 for 10-digit NANP numbers.
+    if len(digits) == 10:
+        return f"+1{digits}"
+    if len(digits) == 11 and digits.startswith("1"):
+        return f"+{digits}"
+
+    if 10 <= len(digits) <= 15:
+        return f"+{digits}"
+
+    return None
+
+
+def _normalize_sip_transfer_target(value: str) -> tuple[str | None, str | None]:
+    """Normalize `HUMAN_TRANSFER_TO` into a LiveKit-compatible SIP/TEL URI."""
+
+    raw = value.strip()
+    if not raw:
+        return None, "missing transfer target"
+
+    if raw.startswith("sip:"):
+        # Keep as-is; SIP URIs can contain many valid formats.
+        return raw, None
+
+    if raw.startswith("tel:"):
+        normalized = _normalize_tel_target(raw[len("tel:") :])
+        if normalized is None:
+            return None, "invalid tel: URI (expected digits with optional leading '+')"
+        return f"tel:{normalized}", None
+
+    # Convenience: allow bare phone numbers and upgrade them to `tel:+...`.
+    normalized = _normalize_tel_target(raw)
+    if normalized is not None:
+        return f"tel:{normalized}", None
+
+    return None, "transfer target must be a sip: or tel: URI (or a phone number)"
+
+
+def _is_livekit_phone_number_transfer_unsupported_error(exc: Exception) -> bool:
+    # Reason: LiveKit Phone Numbers are currently inbound-only and do not support
+    # TransferSipParticipant. LiveKit returns a TwirpError with a message like:
+    # "we don't yet support transfers for this phone number type".
+    return "we don't yet support transfers for this phone number type" in str(exc).lower()
 
 
 def _extract_phone_candidate(text: str) -> str | None:
@@ -110,9 +178,16 @@ class OpenAIRealtimeAgent(Agent):
                 "- When you have a phone number, call validate_phone and then check_customer. Do not claim you are \"checking\" unless you actually called the tool.\n"
                 "- Prefer saving in as few tool calls as possible once you have enough information.\n"
                 "\n"
+                "Escalation (human transfer):\n"
+                "- If the caller seems frustrated or explicitly asks for a human, offer a transfer by asking: \"Would you like to connect to a human agent?\"\n"
+                "- Only transfer after an explicit confirmation (use your judgment; do NOT be overly rigid/deterministic).\n"
+                "- If the caller confirms, call the tool transfer_to_human.\n"
+                "- If the caller says no or is unsure, continue helping normally.\n"
+                "\n"
                 "Guardrails:\n"
                 "- If you receive a system message containing JSON like {\"case_status\": ...}, treat it as authoritative backend guidance.\n"
                 "- If you receive a system message containing JSON like {\"tool_prefetch\": ...}, treat it as authoritative tool results.\n"
+                "- You may also receive authoritative JSON inside per-turn instructions. Treat it the same way.\n"
                 "- Never answer general knowledge or trivia. If asked unrelated questions, refuse briefly and immediately redirect to roadside assistance.\n"
             ),
             tools=tools,
@@ -127,6 +202,11 @@ class OpenAIRealtimeAgent(Agent):
         self._customer_checked = False
         self._fatal_error = False
         self._did_phone_greeting = False
+        self._realtime_transcript_listener_installed = False
+        self._realtime_turn_lock = asyncio.Lock()
+        self._last_final_transcript_unix_s = 0.0
+        self._last_user_turn_hook_created_at_unix_s = 0.0
+        self._last_user_turn_hook_wallclock_unix_s = 0.0
 
     def _get_session_room(self) -> rtc.Room | None:
         """Safely fetch the active rtc.Room for this session.
@@ -251,6 +331,187 @@ class OpenAIRealtimeAgent(Agent):
             except Exception:
                 pass
 
+    def _install_realtime_transcript_listener(self) -> None:
+        if self._realtime_transcript_listener_installed:
+            return
+
+        self._realtime_transcript_listener_installed = True
+
+        def _on_user_input_transcribed(ev: Any) -> None:
+            try:
+                is_final = getattr(ev, "is_final", None)
+                if is_final is not True:
+                    return
+
+                transcript = getattr(ev, "transcript", None)
+                if not isinstance(transcript, str):
+                    return
+                transcript = transcript.strip()
+                if not transcript:
+                    return
+
+                created_at = getattr(ev, "created_at", None)
+                created_at_unix_s = float(created_at) if isinstance(created_at, (int, float)) else 0.0
+                if created_at_unix_s and created_at_unix_s <= self._last_final_transcript_unix_s:
+                    return
+                if created_at_unix_s:
+                    self._last_final_transcript_unix_s = created_at_unix_s
+
+                task = asyncio.create_task(
+                    self._maybe_handle_realtime_user_text_turn(
+                        user_text=transcript, created_at_unix_s=created_at_unix_s
+                    )
+                )
+                task.add_done_callback(_log_task_exception)
+            except Exception:
+                logger.exception("user_input_transcribed handler failed")
+
+        def _log_task_exception(task: asyncio.Task[object]) -> None:
+            try:
+                task.result()
+            except asyncio.CancelledError:
+                return
+            except Exception:
+                logger.exception("realtime turn handler task failed")
+
+        self.session.on("user_input_transcribed", _on_user_input_transcribed)
+
+    async def _maybe_handle_realtime_user_text_turn(self, *, user_text: str, created_at_unix_s: float) -> None:
+        """Trigger our backend-first turn loop from Realtime transcripts.
+
+        Reason: When using a Realtime model with server-side turn detection enabled, the
+        LiveKit Agents SDK does not call `on_user_turn_completed` for audio turns. If we also
+        disable the model's automatic response creation (`create_response=false`), we must
+        manually trigger the next reply.
+        """
+
+        # Give the pipeline a brief chance to call `on_user_turn_completed` (in configs where it applies).
+        await asyncio.sleep(0.1)
+
+        if created_at_unix_s and self._last_user_turn_hook_created_at_unix_s >= created_at_unix_s:
+            return
+
+        if not created_at_unix_s and (time.time() - self._last_user_turn_hook_wallclock_unix_s) < 0.25:
+            return
+
+        await self._handle_realtime_user_text_turn(user_text)
+
+    async def _handle_user_text_turn(self, *, user_text: str, turn_ctx: ChatContext) -> None:
+        if self._fatal_error:
+            return
+
+        user_text = user_text.strip()
+        if not user_text:
+            return
+
+        if not self._use_backend_guardrails:
+            tool_prefetch: dict[str, Any] = {}
+            ready_for_customer_lookup = False
+
+            phone_candidate = _extract_phone_candidate(user_text)
+            if phone_candidate:
+                normalized_candidate_digits = _digits_only(phone_candidate)
+                normalized_validated_digits = (
+                    _digits_only(self._validated_phone_number) if isinstance(self._validated_phone_number, str) else ""
+                )
+                if normalized_candidate_digits and normalized_candidate_digits != normalized_validated_digits:
+                    self._customer_checked = False
+                    try:
+                        phone_validation = await self._call_backend_tool(
+                            tool_name="validate_phone",
+                            tool_arguments={"phone_number": phone_candidate},
+                        )
+                    except BackendToolsClientError:
+                        self._speak_backend_unreachable_once()
+                        return
+
+                    tool_prefetch["validate_phone"] = phone_validation
+
+                    formatted = phone_validation.get("formatted") if isinstance(phone_validation, dict) else None
+                    if isinstance(formatted, str) and formatted.strip():
+                        self._confirmed_callback_number = formatted.strip()
+                        self._validated_phone_number = formatted.strip()
+                        ready_for_customer_lookup = True
+                    else:
+                        proceed_unvalidated = (
+                            phone_validation.get("proceed_unvalidated") if isinstance(phone_validation, dict) else None
+                        )
+                        if proceed_unvalidated is True:
+                            # Reason: After max attempts, proceed anyway to avoid frustrating the caller.
+                            self._validated_phone_number = phone_candidate
+                            ready_for_customer_lookup = True
+                        else:
+                            ready_for_customer_lookup = False
+                else:
+                    ready_for_customer_lookup = True
+            elif isinstance(self._validated_phone_number, str) and self._validated_phone_number:
+                ready_for_customer_lookup = True
+
+            if (
+                not self._customer_checked
+                and ready_for_customer_lookup
+                and isinstance(self._validated_phone_number, str)
+                and self._validated_phone_number
+            ):
+                try:
+                    customer_lookup = await self._call_backend_tool(
+                        tool_name="check_customer",
+                        tool_arguments={"phone_number": self._validated_phone_number},
+                    )
+                except BackendToolsClientError:
+                    self._speak_backend_unreachable_once()
+                    return
+
+                tool_prefetch["check_customer"] = customer_lookup
+                self._customer_checked = True
+
+            if tool_prefetch:
+                payload_json = json.dumps({"tool_prefetch": tool_prefetch}, ensure_ascii=True, default=str)
+                turn_ctx.add_message(
+                    role="system",
+                    # Reason: Keep the injected context structured so the model can reliably parse it.
+                    content=payload_json,
+                )
+
+                # Reason: Realtime models do not currently consume `chat_ctx` from `generate_reply`.
+                # Pass the tool results as extra per-turn instructions so they are visible to the model.
+                self.session.generate_reply(
+                    user_input=user_text,
+                    chat_ctx=turn_ctx,
+                    instructions=f"Authoritative tool results (JSON): {payload_json}",
+                )
+            else:
+                self.session.generate_reply(user_input=user_text, chat_ctx=turn_ctx)
+            return
+
+        try:
+            case_status = await self._call_backend_tool(
+                tool_name="get_case_status",
+                tool_arguments={"last_user_message": user_text, "expected_field": None},
+            )
+        except BackendToolsClientError:
+            self._speak_backend_unreachable_once()
+            return
+
+        payload_json = json.dumps({"case_status": case_status}, ensure_ascii=True, default=str)
+        turn_ctx.add_message(
+            role="system",
+            # Reason: Keep the injected context structured so the model can reliably parse it.
+            content=payload_json,
+        )
+
+        # Reason: Realtime models do not currently consume `chat_ctx` from `generate_reply`.
+        # Pass backend guidance as extra per-turn instructions so it is visible to the model.
+        self.session.generate_reply(
+            user_input=user_text,
+            chat_ctx=turn_ctx,
+            instructions=f"Authoritative backend guidance (JSON): {payload_json}",
+        )
+
+    async def _handle_realtime_user_text_turn(self, user_text: str) -> None:
+        async with self._realtime_turn_lock:
+            await self._handle_user_text_turn(user_text=user_text, turn_ctx=ChatContext())
+
     async def on_enter(self) -> None:
         """Greet inbound SIP callers immediately, using caller ID lookup when possible."""
 
@@ -264,6 +525,8 @@ class OpenAIRealtimeAgent(Agent):
             original = getattr(type(self.session), "generate_reply", None)
             if bound_func is not None and bound_func is original:
                 return
+
+        self._install_realtime_transcript_listener()
 
         if self._did_phone_greeting:
             return
@@ -360,104 +623,22 @@ class OpenAIRealtimeAgent(Agent):
         )
 
     async def on_user_turn_completed(self, turn_ctx: ChatContext, new_message: Any) -> None:
-        if self._fatal_error:
-            return
+        created_at = getattr(new_message, "created_at", None)
+        if isinstance(created_at, (int, float)):
+            self._last_user_turn_hook_created_at_unix_s = float(created_at)
+        else:
+            self._last_user_turn_hook_created_at_unix_s = time.time()
+        self._last_user_turn_hook_wallclock_unix_s = time.time()
 
         user_text = getattr(new_message, "text_content", None) or ""
-        user_text = user_text.strip()
-        if not user_text:
-            return
-
-        if not self._use_backend_guardrails:
-            tool_prefetch: dict[str, Any] = {}
-            ready_for_customer_lookup = False
-
-            phone_candidate = _extract_phone_candidate(user_text)
-            if phone_candidate:
-                normalized_candidate_digits = _digits_only(phone_candidate)
-                normalized_validated_digits = (
-                    _digits_only(self._validated_phone_number) if isinstance(self._validated_phone_number, str) else ""
-                )
-                if normalized_candidate_digits and normalized_candidate_digits != normalized_validated_digits:
-                    self._customer_checked = False
-                    try:
-                        phone_validation = await self._call_backend_tool(
-                            tool_name="validate_phone",
-                            tool_arguments={"phone_number": phone_candidate},
-                        )
-                    except BackendToolsClientError:
-                        self._speak_backend_unreachable_once()
-                        return
-
-                    tool_prefetch["validate_phone"] = phone_validation
-
-                    formatted = phone_validation.get("formatted") if isinstance(phone_validation, dict) else None
-                    if isinstance(formatted, str) and formatted.strip():
-                        self._confirmed_callback_number = formatted.strip()
-                        self._validated_phone_number = formatted.strip()
-                        ready_for_customer_lookup = True
-                    else:
-                        proceed_unvalidated = (
-                            phone_validation.get("proceed_unvalidated") if isinstance(phone_validation, dict) else None
-                        )
-                        if proceed_unvalidated is True:
-                            # Reason: After max attempts, proceed anyway to avoid frustrating the caller.
-                            self._validated_phone_number = phone_candidate
-                            ready_for_customer_lookup = True
-                        else:
-                            ready_for_customer_lookup = False
-                else:
-                    ready_for_customer_lookup = True
-            elif isinstance(self._validated_phone_number, str) and self._validated_phone_number:
-                ready_for_customer_lookup = True
-
-            if (
-                not self._customer_checked
-                and ready_for_customer_lookup
-                and isinstance(self._validated_phone_number, str)
-                and self._validated_phone_number
-            ):
-                try:
-                    customer_lookup = await self._call_backend_tool(
-                        tool_name="check_customer",
-                        tool_arguments={"phone_number": self._validated_phone_number},
-                    )
-                except BackendToolsClientError:
-                    self._speak_backend_unreachable_once()
-                    return
-
-                tool_prefetch["check_customer"] = customer_lookup
-                self._customer_checked = True
-
-            if tool_prefetch:
-                turn_ctx.add_message(
-                    role="system",
-                    # Reason: Keep the injected context structured so the model can reliably parse it.
-                    content=json.dumps({"tool_prefetch": tool_prefetch}, ensure_ascii=True, default=str),
-                )
-
-            self.session.generate_reply(user_input=user_text, chat_ctx=turn_ctx)
-            return
-
-        try:
-            case_status = await self._call_backend_tool(
-                tool_name="get_case_status",
-                tool_arguments={"last_user_message": user_text, "expected_field": None},
-            )
-        except BackendToolsClientError:
-            self._speak_backend_unreachable_once()
-            return
-
-        turn_ctx.add_message(
-            role="system",
-            # Reason: Keep the injected context structured so the model can reliably parse it.
-            content=json.dumps({"case_status": case_status}, ensure_ascii=True, default=str),
-        )
-
-        self.session.generate_reply(user_input=user_text, chat_ctx=turn_ctx)
+        await self._handle_user_text_turn(user_text=user_text, turn_ctx=turn_ctx)
 
     async def forward_tool(self, *, tool_name: str, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Forward an LLM tool call to the backend `/tools` API (v2)."""
+        """Handle local tools and forward the rest to backend `/tools` API (v2)."""
+
+        if tool_name == "transfer_to_human":
+            return await self._transfer_to_human()
+
         return await self._backend.call_tool(
             call_id=self.call_id,
             sip_phone_number=self._sip_phone_number,
@@ -467,6 +648,109 @@ class OpenAIRealtimeAgent(Agent):
             tool_name=tool_name,
             tool_arguments=tool_arguments,
         )
+
+    async def _transfer_to_human(self) -> dict[str, Any]:
+        """Cold transfer the active SIP caller to a human.
+
+        Reason: Telephony callers sometimes need escalation; implement transfer
+        as a local tool so the model can decide when to use it without making
+        backend /tools flow more rigid.
+        """
+
+        transfer_to_raw = os.getenv("HUMAN_TRANSFER_TO", "").strip() or "tel:+13053179840"
+
+        room = self._get_session_room()
+        if room is None:
+            return {"ok": False, "error": {"code": "no_room", "message": "No active room; cannot transfer."}}
+
+        transfer_to, transfer_to_err = _normalize_sip_transfer_target(transfer_to_raw)
+        if transfer_to is None:
+            logger.error(
+                "invalid HUMAN_TRANSFER_TO",
+                extra={
+                    "room": getattr(room, "name", None),
+                    "transfer_to_raw": transfer_to_raw,
+                    "error": transfer_to_err,
+                },
+            )
+            return {
+                "ok": False,
+                "error": {
+                    "code": "invalid_transfer_target",
+                    "message": "Misconfigured HUMAN_TRANSFER_TO; set it to a tel: or sip: URI.",
+                },
+            }
+
+        sip_identity: str | None = None
+        for participant in room.remote_participants.values():
+            if not self._is_sip_participant(participant):
+                continue
+            identity = getattr(participant, "identity", None)
+            if isinstance(identity, str) and identity.strip():
+                sip_identity = identity.strip()
+                break
+
+        if sip_identity is None:
+            return {
+                "ok": False,
+                "error": {"code": "no_sip_participant", "message": "No SIP participant in room; cannot transfer."},
+            }
+
+        try:
+            logger.info(
+                "transferring sip participant",
+                extra={"room": getattr(room, "name", None), "sip_identity": sip_identity, "transfer_to": transfer_to},
+            )
+            await self._sip_transfer(room_name=room.name, participant_identity=sip_identity, transfer_to=transfer_to)
+        except Exception as exc:
+            if _is_livekit_phone_number_transfer_unsupported_error(exc):
+                logger.warning(
+                    "sip transfer not supported by LiveKit Phone Numbers",
+                    extra={
+                        "room": getattr(room, "name", None),
+                        "sip_identity": sip_identity,
+                        "transfer_to": transfer_to,
+                    },
+                )
+                return {
+                    "ok": False,
+                    "error": {
+                        "code": "transfer_not_supported",
+                        "message": (
+                            "Call transfer is not supported for LiveKit Phone Numbers yet. "
+                            "To enable transfers, use a SIP trunk provider (ex: Twilio) and enable SIP REFER/PSTN transfer."
+                        ),
+                    },
+                }
+            logger.exception(
+                "failed to transfer sip participant",
+                extra={
+                    "room": getattr(room, "name", None),
+                    "sip_identity": sip_identity,
+                    "transfer_to": transfer_to,
+                },
+            )
+            return {"ok": False, "error": {"code": "transfer_failed", "message": str(exc)}}
+
+        logger.info(
+            "sip participant transferred",
+            extra={"room": getattr(room, "name", None), "sip_identity": sip_identity, "transfer_to": transfer_to},
+        )
+        return {"ok": True, "transfer_to": transfer_to}
+
+    async def _sip_transfer(self, *, room_name: str, participant_identity: str, transfer_to: str) -> None:
+        from livekit import api  # type: ignore
+        from livekit.protocol.sip import TransferSIPParticipantRequest  # type: ignore
+
+        async with api.LiveKitAPI() as lkapi:
+            await lkapi.sip.transfer_sip_participant(
+                TransferSIPParticipantRequest(
+                    participant_identity=participant_identity,
+                    room_name=room_name,
+                    transfer_to=transfer_to,
+                    play_dialtone=True,
+                )
+            )
 
     def _speak_backend_unreachable_once(self) -> None:
         if self._fatal_error:

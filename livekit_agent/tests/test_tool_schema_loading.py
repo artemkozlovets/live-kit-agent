@@ -24,6 +24,7 @@ def test_load_tool_schemas_includes_local_handoff_tools() -> None:
     assert "handoff_to_ServiceCollection" in names
     assert "handoff_to_Booking" in names
     assert "handoff_to_CustomerIntake" in names
+    assert "transfer_to_human" in names
 
 
 def test_load_tool_schemas_invalid_json_fails_fast(tmp_path: Path) -> None:
@@ -32,4 +33,3 @@ def test_load_tool_schemas_invalid_json_fails_fast(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Invalid JSON"):
         load_tool_schemas(assistant_paths=[bad])
-

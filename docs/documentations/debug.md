@@ -1,6 +1,6 @@
 # Debugging (Single Source of Truth)
 
-> **Last Updated**: 2026-01-30  
+> **Last Updated**: 2026-01-31  
 > **Audience**: Codex (repo context)  
 > **Status**: Draft
 
@@ -414,6 +414,9 @@ Provide:
 - **Symptom:** agent sounds like it is "talking to itself" / constantly interrupts / responses get cancelled (can feel like "two agents")  
   **Likely cause:** barge-in/echo (most common: mobile speakerphone or laptop speakers causing the agent's audio to re-trigger the mic)  
   **Fix:** turn off speakerphone, use headphones/earpiece, lower volume, verify input/output devices (`python -m livekit_agent.agent console --list-devices`)
+- **Symptom:** greeting plays, you speak, then silence (no follow-up reply)  
+  **Likely cause:** Realtime server-side turn detection + `turn_detection.create_response=false` → the SDK may not call `on_user_turn_completed`, so no backend-first reply trigger occurs  
+  **Fix:** enable `VOICE_DEBUG=1` and look for `VOICE_DEBUG user_input_transcribed` without a later `VOICE_DEBUG speech_created`; ensure the transcript-driven fallback is active in [`OpenAIRealtimeAgent._install_realtime_transcript_listener`](../../livekit_agent/openai_realtime_agent.py#L267) and that backend guidance is being injected via per-turn `instructions` (see [`OpenAIRealtimeAgent._handle_user_text_turn`](../../livekit_agent/openai_realtime_agent.py#L332))
 - **Symptom:** Railway shows `/tools` 400 with `Invalid JSON payload`  
   **Likely cause:** a caller hit `/tools` with an empty or non-JSON body  
   **Fix:** ensure callers send a valid JSON body and include `X-TOOLS-TOKEN` (see `api_server/tools/router.py`)

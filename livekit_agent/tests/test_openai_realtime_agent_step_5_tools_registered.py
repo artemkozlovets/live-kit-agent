@@ -39,6 +39,7 @@ async def test_openai_realtime_agent_registers_backend_tools_and_forwards() -> N
     tool_names = {getattr(getattr(tool, "info", None), "name", None) for tool in agent.tools}
     assert "validate_phone" in tool_names
     assert "check_customer" in tool_names
+    assert "transfer_to_human" in tool_names
 
     # Reason: get_case_status is a mandatory pre-turn hook, not an LLM tool.
     assert "get_case_status" not in tool_names
@@ -52,4 +53,3 @@ async def test_openai_realtime_agent_registers_backend_tools_and_forwards() -> N
         await validate_tool({"phone_number": "123"}, None)
 
     assert backend.calls == [{"tool_name": "validate_phone", "tool_arguments": {"phone_number": "123"}}]
-

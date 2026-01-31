@@ -1,4 +1,4 @@
-> ⚠️ **LEARNING MODE**: I'm new to coding. For every task:
+> ⚠️ **LEARNING MODE**: For every task:
 > 1. Start with the big picture
 
 
@@ -45,6 +45,7 @@ Ignore this rule for Specs, Docs, and TDD plans.
 - **Organize code into modules which can easily be added and removed**, for example, grouped by architectural layer, controller, service for web or driver, client for embedded systems.
 - **Strive for symmetry among all projects**: All projects, whatever the language may be should follow the same patterns making a nice symmetry among the different codebases. The only exception should be for language idioms and idiosyncrasies.
 - **Secrets are in .env**
+- When we start developing new feature remind me to check the spec document in my gpt5.2 pro. In web version UI.
 
 ### 🧪 Testing & Reliability
 - **Do not change tests or config files without asking first:** If a test/config change is necessary, ask first with a brief reason + what would change. If after two attempts you cannot fix type/test errors without changing tests/config, stop and give me a full error output, and what you already tried.

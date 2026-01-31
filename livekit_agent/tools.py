@@ -27,6 +27,11 @@ _LOCAL_TOOL_SCHEMAS: list[dict[str, Any]] = [
         "description": "Move the flow to booking.",
         "parameters": {"type": "object", "properties": {}, "required": []},
     },
+    {
+        "name": "transfer_to_human",
+        "description": "Cold transfer the active phone caller to a human agent.",
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    },
 ]
 
 
@@ -80,4 +85,3 @@ def load_tool_schemas(*, assistant_paths: list[Path] | None = None) -> list[dict
             )
 
     return list(schemas_by_name.values())
-

@@ -20,6 +20,7 @@ Inbound telephony to an agent is a routing + media chain:
 
 External references (LiveKit docs):
 - Phone numbers are inbound-only (as of now): https://docs.livekit.io/telephony/start/phone-numbers/
+- LiveKit Phone Numbers do not support call transfers via `TransferSipParticipant` yet: https://docs.livekit.io/telephony/start/phone-numbers/#considerations
 - Inbound call workflow + “dial tone until tracks published”: https://docs.livekit.io/telephony/accepting-calls/workflow-setup/
 - Dispatch rule + `roomConfig.agents`: https://docs.livekit.io/telephony/accepting-calls/dispatch-rule/
 

@@ -1,6 +1,6 @@
 # Repo Context Index (Codex)
 
-> **Last Updated**: 2026-01-28  
+> **Last Updated**: 2026-01-31  
 > **Audience**: Codex (repo context)  
 > **Status**: Draft
 
@@ -42,3 +42,4 @@
 - [`docs/documentations/tech-copilot-comparison.md`](./tech-copilot-comparison.md)
 - [`docs/documentations/livekit-webrtc-debugging.md`](./livekit-webrtc-debugging.md)
 - [`docs/documentations/debug.md`](./debug.md)
+- [`docs/documentations/realtime-human-transfer.md`](./realtime-human-transfer.md)

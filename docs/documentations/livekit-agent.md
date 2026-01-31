@@ -29,14 +29,16 @@
 2. `livekit_agent/agent.py` builds an OpenAI Realtime `AgentSession` and starts `OpenAIRealtimeAgent`.
 3. During conversation:
    - Agent calls backend `get_case_status(last_user_message=...)` on each user turn.
-   - Tool calls are forwarded to the backend via `BackendToolsClient.call_tool(...)`.
+   - Most tool calls are forwarded to the backend via `BackendToolsClient.call_tool(...)`.
+   - Some tools are local-only (example: `transfer_to_human` performs a SIP transfer via the LiveKit API).
 
 ## Realtime turn-taking (important)
 - We explicitly disable OpenAI Realtime **auto response generation** (`turn_detection.create_response=false`) so the model does **not** speak on VAD events before our backend-first guardrails run.
   - All speech is triggered by our code calling `session.generate_reply(...)` (greeting + user turns).
   - See [`build_openai_realtime_session`](../../livekit_agent/openai_realtime_session.py#L8-L45).
 - We also disable OpenAI Realtime **auto interruption** (`turn_detection.interrupt_response=false`) to reduce false barge-ins / echo cutting off speech.
-- Inbound phone greeting is scheduled with `allow_interruptions=False` to reduce early echo/false barge-ins cutting off the first words.
+- We attempt to schedule inbound phone greeting with `allow_interruptions=False` to reduce early echo/false barge-ins cutting off the first words.
+  - Note: LiveKit Agents may ignore `allow_interruptions=False` when using server-side turn detection.
 
 ### Critical gotcha: Realtime turn detection vs `on_user_turn_completed`
 This repo’s backend-first turn logic depends on `OpenAIRealtimeAgent.on_user_turn_completed()` to:
@@ -55,12 +57,15 @@ so the call feels “stuck” (commonly reported as “it hangs after I say my p
 
 **Where this behavior lives:**
 - Realtime session config (auto response disabled): [`livekit_agent/openai_realtime_session.py`](../../livekit_agent/openai_realtime_session.py#L26-L38)
-- Turn hook that triggers replies: [`OpenAIRealtimeAgent.on_user_turn_completed`](../../livekit_agent/openai_realtime_agent.py#L362-L458)
+- Turn loop (backend-first + reply trigger): [`OpenAIRealtimeAgent._handle_user_text_turn`](../../livekit_agent/openai_realtime_agent.py#L332)
+- Turn hook (when it fires): [`OpenAIRealtimeAgent.on_user_turn_completed`](../../livekit_agent/openai_realtime_agent.py#L558)
+- Transcript-driven fallback (when `on_user_turn_completed` does not fire): [`OpenAIRealtimeAgent._install_realtime_transcript_listener`](../../livekit_agent/openai_realtime_agent.py#L267) and [`OpenAIRealtimeAgent._maybe_handle_realtime_user_text_turn`](../../livekit_agent/openai_realtime_agent.py#L312)
 
 External references:
 - LiveKit Agents “Pipeline nodes and hooks” (`on_user_turn_completed` note): https://docs.livekit.io/agents/logic/nodes/#on_user_turn_completed
 - LiveKit Agents “Turn detection & interruptions”: https://docs.livekit.io/agents/logic/turns/
 - LiveKit OpenAI Realtime plugin guide (turn detection options): https://docs.livekit.io/agents/models/realtime/plugins/openai/#turn-detection
+- OpenAI “Realtime conversations” (`create_response=false`): https://platform.openai.com/docs/guides/realtime-conversations#keep-vad-but-disable-automatic-responses
 
 ## Contract: backend tools (v2)
 - **URL:** `BACKEND_TOOLS_URL` (default ends with `/tools`)
@@ -81,6 +86,7 @@ Optional:
 - `OPENAI_REALTIME_VOICE` (passed to `openai.realtime.RealtimeModel(...)`)
 - `AGENT_BACKEND_GUARDRAILS` (defaults to `true`; set to `false` to let the model manage the flow without calling `get_case_status` every turn)
 - `SESSION_REPORTS_URL` + `SESSION_REPORTS_TOKEN` (optional: publish session reports at session end)
+- `HUMAN_TRANSFER_TO` (optional: `tel:+...` transfer target for `transfer_to_human`)
 
 ## Verification
 - All tests: `./scripts/test_all.sh`
@@ -91,3 +97,4 @@ Optional:
 - `docs/documentations/api-server.md`
 - `docs/documentations/testing-and-evals.md`
 - `docs/instructions/livekit-telephony-inbound-calls.md`
+- `docs/documentations/realtime-human-transfer.md`
