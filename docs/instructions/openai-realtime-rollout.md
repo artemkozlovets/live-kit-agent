@@ -90,33 +90,40 @@ Expected:
 
 Tip: correlate systems by **room name** (call_id).
 
-## 4) LiveKit Cloud end-to-end smoke (no browser, text-mode)
-This is the fastest remote “is everything wired up?” check because it avoids audio
-encoding / transcription edge cases.
-
-Big picture:
-- Dispatches the deployed LiveKit Cloud agent into a new room
-- Joins as a normal participant
-- Sends a text message on the `lk.chat` text stream topic (LiveKit text streams)
-- Verifies the agent successfully calls the Railway `POST /tools` backend by watching
-  `lk agent logs` for a `backend_tool_ok` entry for that room
+## 4) LiveKit Cloud end-to-end smoke (no browser)
+This is the “unit test for deployments” check:
+- Runs against the **deployed** LiveKit Cloud agent via `lk` (no browser).
+- Asserts on the backend **session report** (`/observability/session-report`) so we can validate turns deterministically.
 
 Run:
 ```bash
-./scripts/run_livekit_cloud_text_smoke.sh
+# text turn → assistant reply
+./scripts/run_livekit_cloud_smoke.sh --scenario text
+
+# publish audio → final transcript → assistant reply
+./scripts/run_livekit_cloud_smoke.sh --scenario audio
+
+# both (default)
+./scripts/run_livekit_cloud_smoke.sh
 ```
 
 What it does / doesn’t prove:
 - ✅ Dispatch + agent startup works
-- ✅ Agent receives `lk.chat` text input
-- ✅ Agent can reach the Railway `POST /tools` backend (auth + networking)
-- ❌ Does *not* validate audio input (mic/VAD/transcription) or audio output (TTS playback)
-
-Note: the script deletes the room on success; pass `--keep-room` to keep it around for debugging.
+- ✅ Agent receives text input and replies
+- ✅ Agent receives audio input, produces a final transcript, and replies
+- ✅ Session report exporter pipeline works (agent → backend)
+- ❌ Does *not* validate PSTN routing / SIP trunk behavior (use the telephony smoke step for that)
 
 Expected:
 - Exit code `0`
-- Output includes `OK: saw backend_tool_ok in agent logs`
+- Artifacts saved under `local-observability/run-*-livekit-cloud-smoke/`
+
+Fallback (older, log-based text smoke):
+```bash
+./scripts/run_livekit_cloud_text_smoke.sh
+```
+
+Use the fallback when session reports aren’t configured yet; it only proves dispatch + backend connectivity.
 
 ## Rollback (safety)
 This repo is intentionally **OpenAI Realtime-only** (no legacy STT/TTS pipeline). If you need to roll back quickly:

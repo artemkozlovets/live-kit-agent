@@ -1,6 +1,6 @@
 # Testing + Evals (Codex Context)
 
-> **Last Updated**: 2026-01-30  
+> **Last Updated**: 2026-01-31  
 > **Audience**: Codex (repo context)  
 > **Status**: Draft
 
@@ -9,7 +9,16 @@
 - Full suite (agent + API server): `./scripts/test_all.sh`
 - No-mic OpenAI “speaking” check (OpenAI-only): `./scripts/run_openai_realtime_audio_smoke.sh`
 - No-mic “is this phone in the DB?” check (backend tools): `./scripts/run_openai_realtime_customer_lookup_smoke.sh --phone-number "..."`
+- LiveKit Cloud end-to-end smoke (no browser; text + audio): `./scripts/run_livekit_cloud_smoke.sh`
 - Smoke artifacts land under `local-observability/run-*-openai-realtime-*/` (WAV + JSON; ignored by default via [`.gitignore`](../../.gitignore))
+
+## Definition of Done (Feature Work)
+Treat smoke tests like “unit tests for deployments”:
+- If you add/modify a user-visible behavior, add **at least one** smoke test that proves it works.
+- Run:
+  1) `python -m pytest -q` (fast)
+  2) the smallest relevant smoke(s) locally (no mic)
+  3) after deploy: `./scripts/run_livekit_cloud_smoke.sh` (remote, no browser)
 
 ## Pytest
 By default, pytest is configured to run only `livekit_agent/tests`:
@@ -174,6 +183,55 @@ When you add more smoke tests later, follow these conventions:
 - **Keep artifacts ignored:** write to `local-observability/run-<timestamp>-<test-name>/` so `.gitignore` excludes it.
 - **Backend checks use `/tools`:** call tools via `BackendToolsClient.call_tool(...)` rather than hand-rolling HTTP.
 - **Realtime audio capture:** attach `WavFileAudioOutput` to `session.output.audio` before `await session.start(...)` and write a WAV.
+
+## LiveKit Cloud Smoke (No Browser)
+This is the closest thing to “unit tests for a deployment”:
+- It runs against the **deployed LiveKit Cloud agent** via `lk` (no browser required).
+- It asserts on the **session report** exported by the backend (`/observability/session-report`).
+
+**Entry points**
+- Wrapper: [`scripts/run_livekit_cloud_smoke.sh`](../../scripts/run_livekit_cloud_smoke.sh)
+- Runner: [`scripts/livekit_cloud_smoke.py`](../../scripts/livekit_cloud_smoke.py)
+- Session reports pipeline: [`docs/documentations/debug.md`](./debug.md)
+
+**Prereqs**
+- `lk` CLI is authenticated + points at the right project/agent (`cat livekit.toml`).
+- Session report ingest is configured for the deployed agent (`SESSION_REPORTS_URL` secret).
+
+**Run**
+```bash
+# text turn → assistant reply
+./scripts/run_livekit_cloud_smoke.sh --scenario text
+
+# publish Ogg Opus → final transcript → assistant reply
+./scripts/run_livekit_cloud_smoke.sh --scenario audio
+
+# frustration + confirmation → transfer_to_human tool call (no telephony in this room)
+./scripts/run_livekit_cloud_smoke.sh --scenario transfer
+
+# both (default)
+./scripts/run_livekit_cloud_smoke.sh
+```
+
+**Run via pytest (optional; “unit test style”)**
+```bash
+RUN_LIVEKIT_CLOUD_SMOKE=1 python -m pytest -q livekit_agent/tests/test_livekit_cloud_smoke_optional.py
+```
+
+**Outputs**
+- Directory: `local-observability/run-*-livekit-cloud-smoke/`
+- Files:
+  - `result.json` (overall pass/fail)
+  - `text/session_report.json`
+  - `audio/session_report.json`
+  - `transfer/session_report.json`
+  - `audio/lk_room_join.log` (debugging the publish step)
+
+**Common failures**
+- `did_not_find_final_transcript` → audio didn’t produce a final transcript (codec/VAD/transcription) or the publish participant disconnected too early.
+- `no_assistant_reply_after_transcript` → transcription happened but Realtime didn’t reply (OpenAI session failure, tool loop issues, etc.).
+- `did_not_call_transfer_to_human` → model didn’t call the local transfer tool (prompt nondeterminism; inspect the report + adjust transfer turns).
+- `401/403` while polling reports → session report endpoint is protected; export `SESSION_REPORTS_TOKEN` before running.
 
 ## Related Docs
 - [`docs/documentations/localdebug.md`](./localdebug.md) (local workflows + artifacts)

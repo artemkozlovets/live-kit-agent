@@ -52,6 +52,7 @@ Ignore this rule for Specs, Docs, and TDD plans.
 But you can add new tests without approval.
 - **Fail fast:** Let errors crash with stack traces. Only add error handling at system boundaries or when you have a specific recovery strategy.
 - **After updating any logic**, run targeted tests while iterating, then run the full monorepo test suite before final handoff. Fix regressions. Alert if the tests need to be modified. DO NOT modify the tests automatically.
+- **Smoke tests are required for feature work:** if you add/modify user-visible behavior, add at least one CLI smoke test (no mic) and run the smallest relevant remote LiveKit Cloud smoke after deploy.
 When writing tests, include:
   - 1 test for expected use
   - 1 edge case
@@ -65,6 +66,7 @@ When writing tests, include:
 - Smoke tests:
   - OpenAI Realtime audio: `./scripts/run_openai_realtime_audio_smoke.sh --turn "..." --modalities "text,audio"`
   - Customer lookup (backend tools): `./scripts/run_openai_realtime_customer_lookup_smoke.sh --phone-number "..." --expect-found true`
+  - LiveKit Cloud end-to-end (no browser; text + audio): `./scripts/run_livekit_cloud_smoke.sh`
 - Lint: not configured (no repo lint script/tooling found)
 - Typecheck: not configured (no repo typecheck script/tooling found)
 

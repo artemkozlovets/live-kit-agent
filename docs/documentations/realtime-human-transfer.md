@@ -10,6 +10,7 @@
 - **How it works:** the model calls a local tool `transfer_to_human` which uses the LiveKit SIP API to transfer the active SIP participant.
 - **Important limitation:** LiveKit **Phone Numbers** (inbound-only) do **not** support transfers via `TransferSipParticipant` yet; for real transfers you need a SIP trunk provider (ex: Twilio) with SIP REFER/PSTN transfer enabled.
 - **How to verify:** `python -m pytest -q -p no:cacheprovider livekit_agent/tests/test_openai_realtime_agent_transfer_to_human_local.py`.
+- **How to debug (production):** fetch the session report for the call and look for a `function_tools_executed` event where `name=="transfer_to_human"`; if the output error code is `transfer_not_supported`, this is the LiveKit Phone Numbers limitation (not a prompt bug).
 
 ## Big picture
 In a phone call, after the agent greets you, something has to detect **“you finished talking”** (turn detection) and then trigger the next AI reply.
@@ -46,6 +47,9 @@ Separately, when the caller is **frustrated** (or asks for a human), the agent s
 ## Verification
 - Happy path (unit): `python -m pytest -q -p no:cacheprovider livekit_agent/tests/test_openai_realtime_agent_transfer_to_human_local.py`
 - Integration (manual, LiveKit CLI): `lk sip participant transfer --to "tel:+13053179840" --room "<room>" --identity "<sip-participant-identity>"`
+- Smoke (LiveKit Cloud, no browser): `./scripts/run_livekit_cloud_smoke.sh --scenario transfer`
+  - Expected today (CLI-only room): `no_sip_participant` (proves the model attempts the transfer tool call when the user is frustrated + confirms).
+  - Real phone-call behavior depends on your telephony setup (LiveKit Phone Numbers currently → `transfer_not_supported`).
 
 ## Failure modes / gotchas
 - **Tool call succeeds but nothing happens** → transfer target isn’t reachable / wrong `tel:` address → verify `HUMAN_TRANSFER_TO`.
@@ -54,6 +58,19 @@ Separately, when the caller is **frustrated** (or asks for a human), the agent s
 - **Tool returns `no_room`** → agent isn’t attached to a LiveKit room (console/tests) → transfers only apply to telephony rooms.
 - **Tool returns `no_sip_participant`** → not a phone call (Meet/web participant only) → transfer only applies to SIP participants.
 - **Tool returns `transfer_failed`** → LiveKit API creds missing/invalid (`LIVEKIT_*`) or SIP transfer not enabled for that project.
+
+### Debugging from a session report (fast, no UI)
+If the caller reports “technical issues” when transferring, verify what actually happened:
+```bash
+./scripts/fetch_session_reports.py --url "$SESSION_REPORTS_URL" --room "<ROOM_NAME>" --raw
+```
+
+Look for an event like:
+- `type == "function_tools_executed"`
+- `function_call_outputs[].name == "transfer_to_human"`
+
+Common result:
+- `{"ok": false, "error": {"code": "transfer_not_supported", ...}}` → LiveKit Phone Numbers do not support transfers yet.
 
 ## Related docs
 - [`docs/documentations/livekit-agent.md`](./livekit-agent.md)

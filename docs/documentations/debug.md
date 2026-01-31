@@ -417,6 +417,9 @@ Provide:
 - **Symptom:** greeting plays, you speak, then silence (no follow-up reply)  
   **Likely cause:** Realtime server-side turn detection + `turn_detection.create_response=false` → the SDK may not call `on_user_turn_completed`, so no backend-first reply trigger occurs  
   **Fix:** enable `VOICE_DEBUG=1` and look for `VOICE_DEBUG user_input_transcribed` without a later `VOICE_DEBUG speech_created`; ensure the transcript-driven fallback is active in [`OpenAIRealtimeAgent._install_realtime_transcript_listener`](../../livekit_agent/openai_realtime_agent.py#L267) and that backend guidance is being injected via per-turn `instructions` (see [`OpenAIRealtimeAgent._handle_user_text_turn`](../../livekit_agent/openai_realtime_agent.py#L332))
+- **Symptom:** caller asks to transfer to a human, but the agent says it can’t / “technical issues”  
+  **Likely cause:** the `transfer_to_human` tool ran but LiveKit rejected it because LiveKit Phone Numbers don’t support transfers yet  
+  **Fix:** fetch the call’s session report and look for `function_tools_executed` output `{"ok": false, "error": {"code": "transfer_not_supported", ...}}`; to actually enable transfers, switch to a SIP trunk provider (ex: Twilio) with SIP REFER/PSTN transfer enabled (see `docs/documentations/realtime-human-transfer.md`)
 - **Symptom:** Railway shows `/tools` 400 with `Invalid JSON payload`  
   **Likely cause:** a caller hit `/tools` with an empty or non-JSON body  
   **Fix:** ensure callers send a valid JSON body and include `X-TOOLS-TOKEN` (see `api_server/tools/router.py`)
