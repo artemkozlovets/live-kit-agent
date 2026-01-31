@@ -1,6 +1,6 @@
 # Debug LiveKit Meet Call “Stuck” (Codex Context)
 
-> **Last Updated**: 2026-01-29  
+> **Last Updated**: 2026-01-31  
 > **Audience**: Codex (repo context)  
 > **Status**: Draft
 
@@ -110,6 +110,15 @@ curl -s -o /dev/null -w "%{http_code}\n" "https://<railway-domain>/vapi/tools"
 ```
 
 ### End-to-end smoke test (no browser)
+If you only want to verify “agent can reach the backend tools API” and don’t want to deal with audio encoding,
+use the text-mode smoke test instead:
+
+```bash
+./scripts/run_livekit_cloud_text_smoke.sh
+```
+
+That smoke is intentionally text-only; it proves dispatch + `/tools` connectivity, not audio quality.
+
 1) Dispatch a fresh room:
 ```bash
 AGENT_ID="$(python -c 'import tomllib; print(tomllib.load(open(\"livekit.toml\",\"rb\"))[\"agent\"][\"id\"])')"
@@ -137,8 +146,14 @@ lk room join <ROOM> --identity smoke_tester --publish /tmp/speech.ogg --auto-sub
 railway logs --service "Call-agent" --environment development --lines 200 --filter "/tools"
 ```
 
+If Railway logs are empty (or hard to filter), use LiveKit agent logs instead and look for `backend_tool_ok`:
+```bash
+lk agent logs --log-type deploy | rg "backend_tool_ok|<ROOM>"
+```
+
 ## Failure modes / gotchas (symptom → likely cause → fix)
 - **Stuck after phone number prompt** → agent is waiting on the tool loop (validate/check_customer/get_case_status) or a backend call → check `lk agent logs` for backend errors and Railway for `/tools` `200` vs `401/5xx`.
+- **Greeting plays, you speak, then silence (no follow-up reply)** → the agent received a transcript but **never triggered a new assistant turn** (Realtime turn detection inside the model + `turn_detection.create_response=false` can prevent `on_user_turn_completed` from firing) → confirm you have `VOICE_DEBUG=1` and look for `VOICE_DEBUG user_input_transcribed` without a later `VOICE_DEBUG speech_created`. See [`docs/documentations/livekit-agent.md`](../documentations/livekit-agent.md#L29) for the detailed gotcha and file pointers.
 - **OpenAI-first says “checking the database” forever** → the model is likely *not actually calling tools* → confirm Railway has *no* matching `POST /tools` requests during the call, then redeploy the agent (older versions could hallucinate tool usage). Newer agent builds auto-trigger `validate_phone` + `check_customer` prefetch when a phone number is detected.
 - **Railway `/tools` shows `401 Unauthorized`** → `TOOLS_TOKEN` missing/mismatched → set the same `TOOLS_TOKEN` in both places:
   - Railway: `railway variables --service "Call-agent" --environment development --set "TOOLS_TOKEN=<secret>"`

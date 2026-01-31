@@ -1,6 +1,6 @@
 # LiveKit Agent (Codex Context)
 
-> **Last Updated**: 2026-01-28  
+> **Last Updated**: 2026-01-31  
 > **Audience**: Codex (repo context)  
 > **Status**: Draft
 
@@ -34,8 +34,33 @@
 ## Realtime turn-taking (important)
 - We explicitly disable OpenAI Realtime **auto response generation** (`turn_detection.create_response=false`) so the model does **not** speak on VAD events before our backend-first guardrails run.
   - All speech is triggered by our code calling `session.generate_reply(...)` (greeting + user turns).
+  - See [`build_openai_realtime_session`](../../livekit_agent/openai_realtime_session.py#L8-L45).
 - We also disable OpenAI Realtime **auto interruption** (`turn_detection.interrupt_response=false`) to reduce false barge-ins / echo cutting off speech.
 - Inbound phone greeting is scheduled with `allow_interruptions=False` to reduce early echo/false barge-ins cutting off the first words.
+
+### Critical gotcha: Realtime turn detection vs `on_user_turn_completed`
+This repo’s backend-first turn logic depends on `OpenAIRealtimeAgent.on_user_turn_completed()` to:
+- call backend `get_case_status(...)`, then
+- trigger the next assistant response via `session.generate_reply(...)`.
+
+**Important:** LiveKit’s docs note that to use `on_user_turn_completed()` with a realtime model, **turn detection must occur in your agent instead of within the realtime model**.
+
+If OpenAI Realtime is doing turn detection and we also set `turn_detection.create_response=false`, you can end up in a state where:
+- the user’s speech is transcribed, but
+- the agent never starts a follow-up response,
+so the call feels “stuck” (commonly reported as “it hangs after I say my phone number”).
+
+**How to spot this in logs (fast):**
+- With `VOICE_DEBUG=1`, look for `VOICE_DEBUG user_input_transcribed` and `VOICE_DEBUG conversation_item_added` (role=`user`) **without** a later `VOICE_DEBUG speech_created`.
+
+**Where this behavior lives:**
+- Realtime session config (auto response disabled): [`livekit_agent/openai_realtime_session.py`](../../livekit_agent/openai_realtime_session.py#L26-L38)
+- Turn hook that triggers replies: [`OpenAIRealtimeAgent.on_user_turn_completed`](../../livekit_agent/openai_realtime_agent.py#L362-L458)
+
+External references:
+- LiveKit Agents “Pipeline nodes and hooks” (`on_user_turn_completed` note): https://docs.livekit.io/agents/logic/nodes/#on_user_turn_completed
+- LiveKit Agents “Turn detection & interruptions”: https://docs.livekit.io/agents/logic/turns/
+- LiveKit OpenAI Realtime plugin guide (turn detection options): https://docs.livekit.io/agents/models/realtime/plugins/openai/#turn-detection
 
 ## Contract: backend tools (v2)
 - **URL:** `BACKEND_TOOLS_URL` (default ends with `/tools`)

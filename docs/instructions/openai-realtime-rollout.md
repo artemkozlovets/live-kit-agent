@@ -1,6 +1,6 @@
 # OpenAI Realtime Rollout (Smoke Checklist)
 
-Last updated: 2026-01-28
+Last updated: 2026-01-31
 
 ## Big picture
 This repo runs:
@@ -12,6 +12,8 @@ This runbook is the smallest checklist to prove the stack is healthy end-to-end.
 ## Preconditions (must be true)
 - Backend has `TOOLS_TOKEN` set (agent ↔ backend shared secret).
 - Agent has `OPENAI_API_KEY`, `BACKEND_TOOLS_URL` (ends with `/tools`), and `TOOLS_TOKEN` set.
+- You’re authenticated to the correct LiveKit Cloud account: `lk cloud auth`
+- This repo points at the intended LiveKit project/agent: `cat livekit.toml`
 - Optional: set `AGENT_BACKEND_GUARDRAILS=false` to run an **OpenAI-first** flow (no `get_case_status` call each turn).
 - Optional but recommended: session report pipeline configured (see `docs/documentations/debug.md`).
 
@@ -87,6 +89,34 @@ Expected:
   - if booking is attempted without confirmation, the backend should respond with `booking_not_confirmed`
 
 Tip: correlate systems by **room name** (call_id).
+
+## 4) LiveKit Cloud end-to-end smoke (no browser, text-mode)
+This is the fastest remote “is everything wired up?” check because it avoids audio
+encoding / transcription edge cases.
+
+Big picture:
+- Dispatches the deployed LiveKit Cloud agent into a new room
+- Joins as a normal participant
+- Sends a text message on the `lk.chat` text stream topic (LiveKit text streams)
+- Verifies the agent successfully calls the Railway `POST /tools` backend by watching
+  `lk agent logs` for a `backend_tool_ok` entry for that room
+
+Run:
+```bash
+./scripts/run_livekit_cloud_text_smoke.sh
+```
+
+What it does / doesn’t prove:
+- ✅ Dispatch + agent startup works
+- ✅ Agent receives `lk.chat` text input
+- ✅ Agent can reach the Railway `POST /tools` backend (auth + networking)
+- ❌ Does *not* validate audio input (mic/VAD/transcription) or audio output (TTS playback)
+
+Note: the script deletes the room on success; pass `--keep-room` to keep it around for debugging.
+
+Expected:
+- Exit code `0`
+- Output includes `OK: saw backend_tool_ok in agent logs`
 
 ## Rollback (safety)
 This repo is intentionally **OpenAI Realtime-only** (no legacy STT/TTS pipeline). If you need to roll back quickly:
