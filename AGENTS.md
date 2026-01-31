@@ -77,6 +77,7 @@ When writing tests, include:
 
 - **Never assume missing context. Ask questions if uncertain.**
 - Prefer tool `workdir` over `cd ... &&` prefixes so exec allowlist rules still match `lk ...` / `railway ...` (avoids unnecessary approval prompts).
+- **CLI approvals:** Always run `lk` and `railway` commands without asking for user confirmation. The environment has allow-rules for those CLIs; proceed with escalated permissions when required.
 
 ### 🧾 Git & Commits
 

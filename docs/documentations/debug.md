@@ -33,6 +33,52 @@ Practical impact:
 4. **Do you need "agent insights" data without opening the UI?**
    - Use the **Session report exporter** (programmatic observability) below.
 
+## Choose your debug environment (fastest to slowest)
+Pick the environment that isolates the layer you are testing. This cuts noise and
+makes logs easier to interpret.
+
+### 1) Local console (agent + backend on your machine)
+**Best for:** logic bugs, tools flow, and fast iteration.
+
+Pros:
+- Most complete logs, in one place (JSONL + tool traces + session reports).
+- Fast iteration (no deployment or LiveKit config dependencies).
+- Deterministic repro with `./scripts/run_local_audio_console.sh`.
+
+Cons:
+- Does not catch LiveKit Cloud config issues (secrets, dispatch, scaling).
+- Does not reproduce SIP/phone call edge cases.
+
+### 2) LiveKit Cloud + Meet (remote web calls)
+**Best for:** real deployment validation without SIP complexity.
+
+Pros:
+- Real agent deployment; validates LiveKit secrets and runtime.
+- Fewer moving parts than PSTN.
+- Room name == call_id lets you correlate agent + Railway logs.
+
+Cons:
+- Logs split across LiveKit Cloud and Railway.
+- `lk agent logs` only shows newest instance (forward logs if scaled).
+- Repro is slower and dependent on browser/network state.
+
+### 3) LiveKit Cloud + Telephony (phone/PSTN calls)
+**Best for:** validating PSTN routing, caller ID, and speak-first timing.
+
+Pros:
+- Only way to verify SIP routing + caller ID behavior.
+- Catches dispatch rule issues Meet will never show.
+
+Cons:
+- Most moving parts (phone number -> SIP -> dispatch -> room -> agent -> tools).
+- Timing-sensitive: caller hears dial tone until agent publishes audio.
+- Hardest to reproduce and correlate.
+
+### Recommended order (fastest to isolate)
+1) **Local console** to confirm tool loop + agent behavior.
+2) **Meet** to validate LiveKit Cloud config without SIP.
+3) **Telephony** only when the issue is PSTN-specific.
+
 ## LiveKit Cloud quick checks (no UI)
 Validate "is the agent deployed / configured / running" before deeper debugging:
 

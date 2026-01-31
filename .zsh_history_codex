@@ -1,0 +1,6 @@
+export HISTFILE="$PWD/.zsh_history_codex"
+export SHELL_SESSION_DIR="$PWD/.zsh_sessions"
+mkdir -p "$SHELL_SESSION_DIR"
+echo "HISTFILE=$HISTFILE"
+echo "SHELL_SESSION_DIR=$SHELL_SESSION_DIR"
+ls -ld "$SHELL_SESSION_DIR"

@@ -11,6 +11,7 @@ This folder is documentation optimized for *Codex-style codebase work*: fast ret
 2. [`docs/documentations/repo-overview.md`](documentations/repo-overview.md)
 3. [`docs/documentations/livekit-agent.md`](documentations/livekit-agent.md)
 4. [`docs/documentations/api-server.md`](documentations/api-server.md)
+5. [`docs/documentations/realtime-human-transfer.md`](documentations/realtime-human-transfer.md)
 
 ## Operational runbooks
 `docs/instructions/` contains operational “how to” guides (example: pulling Railway logs).
