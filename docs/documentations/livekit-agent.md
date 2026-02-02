@@ -84,9 +84,17 @@ See `docs/documentations/api-server.md` for the full `/tools` contract and failu
 
 Optional:
 - `OPENAI_REALTIME_VOICE` (passed to `openai.realtime.RealtimeModel(...)`)
+- `OPENAI_REALTIME_EAGERNESS` (`auto|low|medium|high`; semantic VAD eagerness; lower = less interrupting)
 - `AGENT_BACKEND_GUARDRAILS` (defaults to `true`; set to `false` to let the model manage the flow without calling `get_case_status` every turn)
 - `SESSION_REPORTS_URL` + `SESSION_REPORTS_TOKEN` (optional: publish session reports at session end)
 - `HUMAN_TRANSFER_TO` (optional: `tel:+...` transfer target for `transfer_to_human`)
+- `REALTIME_TRANSCRIPT_DEBOUNCE_S` (debounce final transcript bursts before triggering the backend-first reply loop; default `0.6`)
+- `REALTIME_TRANSCRIPT_POST_SILENCE_S` (minimum stable “user stopped speaking” time before triggering a reply; default `0.3`)
+- `REALTIME_TRANSCRIPT_MAX_WAIT_S` (max time to wait for user to stop speaking before replying; default `8.0`)
+- `LK_MIN_INTERRUPTION_DURATION_S` (require at least N seconds of speech before interrupting the agent)
+- `LK_MIN_INTERRUPTION_WORDS` (require at least N transcribed words before interrupting the agent)
+- `LK_FALSE_INTERRUPTION_TIMEOUT_S` (how long to wait before treating an interruption as false; set `<0` to disable)
+- `LK_RESUME_FALSE_INTERRUPTION` (`true|false`; whether to resume after a false interruption)
 
 ## Verification
 - All tests: `./scripts/test_all.sh`

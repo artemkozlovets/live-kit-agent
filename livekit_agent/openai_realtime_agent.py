@@ -207,6 +207,12 @@ class OpenAIRealtimeAgent(Agent):
         self._last_final_transcript_unix_s = 0.0
         self._last_user_turn_hook_created_at_unix_s = 0.0
         self._last_user_turn_hook_wallclock_unix_s = 0.0
+        self._realtime_pending_user_text_parts: list[str] = []
+        self._realtime_pending_last_transcript_created_at_unix_s = 0.0
+        self._realtime_pending_task: asyncio.Task[None] | None = None
+        self._last_user_state: str | None = None
+        self._last_user_state_changed_at_wallclock_unix_s = 0.0
+        self._user_state_change_event = asyncio.Event()
 
     def _get_session_room(self) -> rtc.Room | None:
         """Safely fetch the active rtc.Room for this session.
@@ -337,6 +343,17 @@ class OpenAIRealtimeAgent(Agent):
 
         self._realtime_transcript_listener_installed = True
 
+        def _on_user_state_changed(ev: Any) -> None:
+            try:
+                new_state = getattr(ev, "new_state", None)
+                if not isinstance(new_state, str):
+                    return
+                self._last_user_state = new_state
+                self._last_user_state_changed_at_wallclock_unix_s = time.time()
+                self._user_state_change_event.set()
+            except Exception:
+                logger.exception("user_state_changed handler failed")
+
         def _on_user_input_transcribed(ev: Any) -> None:
             try:
                 is_final = getattr(ev, "is_final", None)
@@ -357,27 +374,57 @@ class OpenAIRealtimeAgent(Agent):
                 if created_at_unix_s:
                     self._last_final_transcript_unix_s = created_at_unix_s
 
-                task = asyncio.create_task(
-                    self._maybe_handle_realtime_user_text_turn(
-                        user_text=transcript, created_at_unix_s=created_at_unix_s
-                    )
-                )
-                task.add_done_callback(_log_task_exception)
+                self._queue_realtime_user_text_turn(user_text=transcript, created_at_unix_s=created_at_unix_s)
             except Exception:
                 logger.exception("user_input_transcribed handler failed")
 
-        def _log_task_exception(task: asyncio.Task[object]) -> None:
+        def _on_close(_: Any) -> None:
             try:
-                task.result()
-            except asyncio.CancelledError:
-                return
+                self._cancel_pending_realtime_user_text_turn()
             except Exception:
-                logger.exception("realtime turn handler task failed")
+                logger.exception("close handler failed")
 
+        self.session.on("close", _on_close)
+        self.session.on("user_state_changed", _on_user_state_changed)
         self.session.on("user_input_transcribed", _on_user_input_transcribed)
 
-    async def _maybe_handle_realtime_user_text_turn(self, *, user_text: str, created_at_unix_s: float) -> None:
-        """Trigger our backend-first turn loop from Realtime transcripts.
+    @staticmethod
+    def _log_task_exception(task: asyncio.Task[object]) -> None:
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logger.exception("realtime turn handler task failed")
+
+    def _queue_realtime_user_text_turn(self, *, user_text: str, created_at_unix_s: float) -> None:
+        user_text = user_text.strip()
+        if not user_text:
+            return
+
+        last = self._realtime_pending_user_text_parts[-1] if self._realtime_pending_user_text_parts else ""
+        if last != user_text:
+            self._realtime_pending_user_text_parts.append(user_text)
+        self._realtime_pending_last_transcript_created_at_unix_s = created_at_unix_s
+
+        if self._realtime_pending_task is not None and not self._realtime_pending_task.done():
+            self._realtime_pending_task.cancel()
+
+        task = asyncio.create_task(
+            self._maybe_handle_realtime_user_text_turn(expected_created_at_unix_s=created_at_unix_s)
+        )
+        task.add_done_callback(self._log_task_exception)
+        self._realtime_pending_task = task
+
+    def _cancel_pending_realtime_user_text_turn(self) -> None:
+        if self._realtime_pending_task is not None and not self._realtime_pending_task.done():
+            self._realtime_pending_task.cancel()
+        self._realtime_pending_task = None
+        self._realtime_pending_user_text_parts.clear()
+        self._realtime_pending_last_transcript_created_at_unix_s = 0.0
+
+    async def _maybe_handle_realtime_user_text_turn(self, *, expected_created_at_unix_s: float) -> None:
+        """Trigger our backend-first turn loop from Realtime transcripts (debounced).
 
         Reason: When using a Realtime model with server-side turn detection enabled, the
         LiveKit Agents SDK does not call `on_user_turn_completed` for audio turns. If we also
@@ -385,14 +432,75 @@ class OpenAIRealtimeAgent(Agent):
         manually trigger the next reply.
         """
 
-        # Give the pipeline a brief chance to call `on_user_turn_completed` (in configs where it applies).
-        await asyncio.sleep(0.1)
+        # Give the SDK a chance to call `on_user_turn_completed` (in configs where it applies),
+        # and debounce bursts of final transcripts that happen before the end of a real turn.
+        debounce_s = 0.6
+        raw_debounce = os.getenv("REALTIME_TRANSCRIPT_DEBOUNCE_S", "").strip()
+        if raw_debounce:
+            try:
+                debounce_s = max(0.05, float(raw_debounce))
+            except ValueError:
+                logger.warning("Invalid REALTIME_TRANSCRIPT_DEBOUNCE_S=%r (expected float); using default", raw_debounce)
+        await asyncio.sleep(debounce_s)
 
-        if created_at_unix_s and self._last_user_turn_hook_created_at_unix_s >= created_at_unix_s:
+        if expected_created_at_unix_s != self._realtime_pending_last_transcript_created_at_unix_s:
             return
 
-        if not created_at_unix_s and (time.time() - self._last_user_turn_hook_wallclock_unix_s) < 0.25:
+        if expected_created_at_unix_s and self._last_user_turn_hook_created_at_unix_s >= expected_created_at_unix_s:
+            self._realtime_pending_user_text_parts.clear()
+            self._realtime_pending_last_transcript_created_at_unix_s = 0.0
+            self._realtime_pending_task = None
             return
+
+        if not expected_created_at_unix_s and (time.time() - self._last_user_turn_hook_wallclock_unix_s) < 0.25:
+            self._realtime_pending_user_text_parts.clear()
+            self._realtime_pending_last_transcript_created_at_unix_s = 0.0
+            self._realtime_pending_task = None
+            return
+
+        # Avoid speaking while the caller is still talking. Realtime transcripts can be finalized
+        # mid-turn, so we wait for a stable "listening" state before triggering the reply.
+        quiet_s = 0.3
+        raw_quiet = os.getenv("REALTIME_TRANSCRIPT_POST_SILENCE_S", "").strip()
+        if raw_quiet:
+            try:
+                quiet_s = max(0.0, float(raw_quiet))
+            except ValueError:
+                logger.warning(
+                    "Invalid REALTIME_TRANSCRIPT_POST_SILENCE_S=%r (expected float); using default", raw_quiet
+                )
+
+        max_wait_s = 8.0
+        raw_max_wait = os.getenv("REALTIME_TRANSCRIPT_MAX_WAIT_S", "").strip()
+        if raw_max_wait:
+            try:
+                max_wait_s = max(0.5, float(raw_max_wait))
+            except ValueError:
+                logger.warning("Invalid REALTIME_TRANSCRIPT_MAX_WAIT_S=%r (expected float); using default", raw_max_wait)
+
+        deadline = time.time() + max_wait_s
+        while time.time() < deadline:
+            if expected_created_at_unix_s != self._realtime_pending_last_transcript_created_at_unix_s:
+                return
+
+            if self._last_user_state != "speaking":
+                stable_for_s = time.time() - self._last_user_state_changed_at_wallclock_unix_s
+                if stable_for_s >= quiet_s:
+                    break
+
+            self._user_state_change_event.clear()
+            try:
+                await asyncio.wait_for(self._user_state_change_event.wait(), timeout=0.25)
+            except TimeoutError:
+                pass
+
+        if expected_created_at_unix_s != self._realtime_pending_last_transcript_created_at_unix_s:
+            return
+
+        user_text = " ".join(self._realtime_pending_user_text_parts).strip()
+        self._realtime_pending_user_text_parts.clear()
+        self._realtime_pending_last_transcript_created_at_unix_s = 0.0
+        self._realtime_pending_task = None
 
         await self._handle_realtime_user_text_turn(user_text)
 
@@ -623,6 +731,8 @@ class OpenAIRealtimeAgent(Agent):
         )
 
     async def on_user_turn_completed(self, turn_ctx: ChatContext, new_message: Any) -> None:
+        self._cancel_pending_realtime_user_text_turn()
+
         created_at = getattr(new_message, "created_at", None)
         if isinstance(created_at, (int, float)):
             self._last_user_turn_hook_created_at_unix_s = float(created_at)

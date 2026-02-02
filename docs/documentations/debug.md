@@ -356,12 +356,20 @@ These env vars increase signal or timing detail:
 - `LOG_PII=1` (disables masking of call IDs/phone numbers; avoid in prod)
 - `LK_OPENAI_DEBUG=1` (agent: logs OpenAI Realtime websocket events; high-volume; likely contains PII)
 - `VOICE_DEBUG=1` (agent: structured voice/turn logs; transcripts redacted unless `LOG_PII=1`)
+- `REALTIME_TRANSCRIPT_DEBOUNCE_S=0.6` (agent: debounce final transcript bursts before triggering the backend-first reply loop)
+- `REALTIME_TRANSCRIPT_POST_SILENCE_S=0.3` (agent: minimum stable “user stopped speaking” time before triggering a reply)
+- `REALTIME_TRANSCRIPT_MAX_WAIT_S=8.0` (agent: max time to wait for user to stop speaking before replying)
 - `VAPI_TOOLS_LOG_TIMING=1` (tools timing logs in API server; legacy name)
 - `SESSION_REPORTS_URL=...` (agent: enables session report POST on session end)
 - `SESSION_REPORTS_TOKEN=...` (agent + backend: bearer auth for session report endpoint)
 - `LOCAL_OBSERVABILITY_DIR=...` (local: persist logs + session reports to disk)
 - `AGENT_BACKEND_GUARDRAILS=false` (agent: OpenAI-first; skips per-turn `get_case_status`)
 - `OPENAI_REALTIME_VOICE=...` (agent: optional voice selection)
+- `OPENAI_REALTIME_EAGERNESS=auto|low|medium|high` (agent: semantic VAD eagerness; lower = less interrupting)
+- `LK_MIN_INTERRUPTION_DURATION_S=...` (agent: require at least N seconds of speech before interrupting the agent)
+- `LK_MIN_INTERRUPTION_WORDS=...` (agent: require at least N transcribed words before interrupting the agent)
+- `LK_FALSE_INTERRUPTION_TIMEOUT_S=...` (agent: how long to wait before treating an interruption as false; set `<0` to disable)
+- `LK_RESUME_FALSE_INTERRUPTION=true|false` (agent: whether to resume after a false interruption)
 
 When `LOCAL_OBSERVABILITY_DIR` is set:
 - Backend writes:
