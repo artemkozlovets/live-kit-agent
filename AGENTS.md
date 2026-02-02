@@ -1,5 +1,5 @@
 > ⚠️ **LEARNING MODE**: For every task:
-> 1. Start with the big picture
+> Start with the big picture
 
 
 ### Methodology
