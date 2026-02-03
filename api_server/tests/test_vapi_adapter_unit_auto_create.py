@@ -220,6 +220,33 @@ def test_returns_existing_unit_when_found() -> None:
     assert fake_client.create_unit_called is False
 
 
+def test_auto_create_unit_uses_provided_make_model() -> None:
+    """When make/model is provided, persist it to the created unit args."""
+
+    fake_client = FakeDatabaseClient(
+        unit_by_vin=None,
+        unit_by_unit_number=None,
+        units_by_nickname=[],
+    )
+
+    result = resolve_unit_or_create(
+        vin_number=None,
+        unit_number=None,
+        unit_nickname="Big Pete",
+        make="Ford",
+        model="F-150",
+        db_client=fake_client,
+        customer_id="CUST-123",
+        auto_create=True,
+    )
+
+    assert result.unit_id == "UNIT-NEW"
+    assert result.was_created is True
+    assert fake_client.create_unit_called is True
+    assert fake_client.captured_create_args["make"] == "Ford"
+    assert fake_client.captured_create_args["model"] == "F-150"
+
+
 # =============================================================================
 # TEST 5.2.5: Error Case - Ambiguous Nickname Blocks Auto-Create
 # =============================================================================

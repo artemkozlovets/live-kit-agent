@@ -85,6 +85,9 @@ def resolve_unit_or_create(
     vin_number: str | None,
     unit_number: str | None,
     unit_nickname: str | None,
+    make: str | None = None,
+    model: str | None = None,
+    year: int | None = None,
     db_client: DatabaseClient,
     customer_id: str,
     auto_create: bool = False,
@@ -109,6 +112,10 @@ def resolve_unit_or_create(
         - error + matching_units (ambiguous nickname)
         - error (not found and auto_create=False)
     """
+    make = make.strip() if isinstance(make, str) and make.strip() else None
+    model = model.strip() if isinstance(model, str) and model.strip() else None
+    year_value = year if isinstance(year, int) and year > 0 else 0
+
     # Step 1: Try to resolve existing unit using Phase 4 cascade.
     resolution = resolve_unit(
         vin_number=vin_number,
@@ -156,9 +163,9 @@ def resolve_unit_or_create(
             unit_number=unit_number,
             unit_nickname=unit_nickname,
             # Vehicle details - clearly marked as unknown
-            make="Unknown",
-            model="Unknown",
-            year=0,
+            make=make or "Unknown",
+            model=model or "Unknown",
+            year=year_value,
         )
 
         unit_id = db_client.create_unit(store_unit_args, customer_id)

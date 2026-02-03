@@ -281,8 +281,29 @@ def _recap_policy_instructions(case_status: object) -> str | None:
         return None
 
     current_phase = case_status.get("current_phase")
-    phase = current_phase.strip() if isinstance(current_phase, str) else ""
+    phase = current_phase.strip().lower() if isinstance(current_phase, str) else ""
     if phase == "booking":
+        booking_status = None
+        booking_payload = case_status.get("booking")
+        if isinstance(booking_payload, dict):
+            status = booking_payload.get("status")
+            if isinstance(status, str) and status.strip():
+                booking_status = status.strip().lower()
+
+        if booking_status == "confirmed":
+            return (
+                "Recap policy (post-confirmation): Do NOT repeat back any details (name, phone, address, vehicle, location). "
+                "Do NOT ask for confirmation again. Proceed with the service order."
+            )
+
+        message_category = case_status.get("message_category")
+        category = message_category.strip().lower() if isinstance(message_category, str) else ""
+        if category in {"confirmation", "decline"}:
+            return (
+                "Recap policy (booking response): Do NOT repeat back details or do another recap. "
+                "If the caller confirmed, proceed. If the caller declined, ask what needs to change."
+            )
+
         return (
             "Recap policy (booking): Give ONE concise recap of the service + location + vehicle only (do not read back contact details), "
             "then ask for an explicit yes/no."
@@ -365,6 +386,7 @@ class OpenAIRealtimeAgent(Agent):
                 "- Use tools to validate and save customer data (validate_phone, check_customer, register_new_customer, update_customer, etc.).\n"
                 "- When you have a phone number, call validate_phone and then check_customer. Do not claim you are \"checking\" unless you actually called the tool.\n"
                 "- Prefer saving in as few tool calls as possible once you have enough information.\n"
+                "- If the caller provides the vehicle make/model (ex: \"Ford F-150\"), save it on the service (vehicle_make/vehicle_model) so it can be stored in the database.\n"
                 "\n"
                 "Escalation (human transfer):\n"
                 "- If the caller seems frustrated or explicitly asks for a human, offer a transfer by asking: \"Would you like to connect to a human agent?\"\n"

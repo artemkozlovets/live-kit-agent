@@ -145,6 +145,73 @@ def test_store_service_order_missing_unit_auto_creates_and_marks_session_complet
         app.dependency_overrides.pop(get_database_client, None)
 
 
+def test_store_service_order_auto_create_unit_uses_vehicle_make_model_from_service() -> None:
+    """When auto-creating a unit, pass through make/model captured during the call."""
+
+    from api_server.server.fastapi_app import app
+    from api_server.vapi.router import session_store
+
+    call_id = "call-store-service-order-auto-create-make-model"
+    session_store.set(
+        call_id,
+        {
+            "customer_id": "CUST-123",
+            "services": [
+                {
+                    "unit_nickname": "Big Pete",
+                    "vehicle_make": "Ford",
+                    "vehicle_model": "F-150",
+                    "service_complaint": "Flat tire",
+                    "service_location": "Denver CO",
+                },
+            ],
+        },
+    )
+
+    fake_database_client = FakeDatabaseClient(
+        customer_exists=True,
+        unit_records_for_service_order={},
+        units_by_vin_number={},
+        units_by_unit_number={},
+        units_by_nickname={},
+        service_order_ids_to_return=["SO-1"],
+    )
+
+    app.dependency_overrides[get_database_client] = lambda: fake_database_client
+    previous_token = os.environ.get("TOOLS_TOKEN")
+    try:
+        test_client = TestClient(app)
+        token = "test-secret"
+        os.environ["TOOLS_TOKEN"] = token
+
+        vapi_tool_call_payload = {
+            "call": {"id": call_id},
+            "tool_calls": [
+                {"id": "tool-call-confirm-services", "name": "confirm_services", "arguments": {}},
+                {"id": "tool-call-store-service-order-make-model", "name": "store_service_order", "arguments": {}},
+            ],
+        }
+
+        response = test_client.post("/tools", json=vapi_tool_call_payload, headers={"X-TOOLS-TOKEN": token})
+
+        assert response.status_code == 200
+        response_data = response.json()
+        results = response_data["results"]
+        assert results[0]["ok"] is True
+        assert results[1]["ok"] is True
+
+        assert len(fake_database_client.created_units) == 1
+        created_unit_args = fake_database_client.created_units[0]
+        assert created_unit_args.make == "Ford"
+        assert created_unit_args.model == "F-150"
+    finally:
+        if previous_token is None:
+            os.environ.pop("TOOLS_TOKEN", None)
+        else:
+            os.environ["TOOLS_TOKEN"] = previous_token
+        app.dependency_overrides.pop(get_database_client, None)
+
+
 def test_store_service_order_success_creates_one_order_per_service_and_marks_session_completed() -> None:
     # Arrange
     from api_server.server.fastapi_app import app

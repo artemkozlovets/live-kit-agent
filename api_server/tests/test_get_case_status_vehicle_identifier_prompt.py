@@ -102,3 +102,117 @@ def test_get_case_status_service_collection_vehicle_prompt_fallback_after_vin_at
     finally:
         app.dependency_overrides.pop(get_database_client, None)
 
+
+def test_get_case_status_prompts_for_vin_or_make_model_when_only_nickname_provided() -> None:
+    """Expected use: if we only have a nickname, ask once for VIN or make/model."""
+
+    from api_server.server.fastapi_app import app
+    from api_server.vapi.router import session_store
+
+    call_id = "call-vehicle-id-prompt-nickname"
+    session_store.set(
+        call_id,
+        {
+            "first_name": "Pat",
+            "last_name": "Lee",
+            "phone_number": "+15551230000",
+            "unit_nickname": "Big Pete",
+            "service_location": "123 Main St",
+            "service_complaint": "flat tire",
+        },
+    )
+
+    app.dependency_overrides[get_database_client] = lambda: FakeDatabaseClient()
+    try:
+        test_client = TestClient(app)
+        parsed_result = _post_get_case_status(
+            test_client=test_client,
+            call_id=call_id,
+            last_user_message="That's the one.",
+        )
+
+        assert parsed_result["current_phase"] == "service_collection"
+        assert parsed_result["response_mode"] == "speak_first"
+        assert parsed_result["immediate_message"] == (
+            "Do you have the VIN for that vehicle? If not, what's the make and model (for example, Ford F-150)?"
+        )
+        assert parsed_result["then_action"] == ""
+    finally:
+        app.dependency_overrides.pop(get_database_client, None)
+
+
+def test_get_case_status_vehicle_prompt_nickname_only_is_one_time() -> None:
+    """Edge case: once we ask for VIN/make-model, don't keep asking every turn."""
+
+    from api_server.server.fastapi_app import app
+    from api_server.vapi.router import session_store
+
+    call_id = "call-vehicle-id-prompt-nickname-once"
+    session_store.set(
+        call_id,
+        {
+            "first_name": "Pat",
+            "last_name": "Lee",
+            "phone_number": "+15551230000",
+            "unit_nickname": "Big Pete",
+            "service_location": "123 Main St",
+            "service_complaint": "flat tire",
+        },
+    )
+
+    app.dependency_overrides[get_database_client] = lambda: FakeDatabaseClient()
+    try:
+        test_client = TestClient(app)
+        first = _post_get_case_status(
+            test_client=test_client,
+            call_id=call_id,
+            last_user_message="Ok.",
+        )
+        assert first["response_mode"] == "speak_first"
+        assert "VIN" in first["immediate_message"]
+
+        second = _post_get_case_status(
+            test_client=test_client,
+            call_id=call_id,
+            last_user_message="I don't have it.",
+        )
+        assert second["response_mode"] == "tool_first"
+        assert second["immediate_message"] is None
+    finally:
+        app.dependency_overrides.pop(get_database_client, None)
+
+
+def test_get_case_status_does_not_prompt_for_vin_or_make_model_after_fallback_triggered() -> None:
+    """Failure case: if VIN fallback was already triggered, don't nag for VIN again."""
+
+    from api_server.server.fastapi_app import app
+    from api_server.vapi.router import session_store
+
+    call_id = "call-vehicle-id-prompt-nickname-vin-fallback"
+    session_store.set(
+        call_id,
+        {
+            "first_name": "Pat",
+            "last_name": "Lee",
+            "phone_number": "+15551230000",
+            "vin_attempts": 3,
+            "unit_nickname": "Big Pete",
+            "service_location": "123 Main St",
+            "service_complaint": "flat tire",
+        },
+    )
+
+    app.dependency_overrides[get_database_client] = lambda: FakeDatabaseClient()
+    try:
+        test_client = TestClient(app)
+        parsed_result = _post_get_case_status(
+            test_client=test_client,
+            call_id=call_id,
+            last_user_message="Big Pete, the blue truck.",
+        )
+
+        assert parsed_result["current_phase"] == "service_collection"
+        assert parsed_result["response_mode"] == "tool_first"
+        assert parsed_result["immediate_message"] is None
+    finally:
+        app.dependency_overrides.pop(get_database_client, None)

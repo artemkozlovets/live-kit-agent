@@ -49,6 +49,8 @@ def _normal_immediate_message(case_state: dict[str, Any]) -> str | None:
             vin_fallback_triggered = validation_state.get("vin_fallback_triggered")
             if vin_fallback_triggered is True:
                 return "No worries — what's the unit number or a nickname for the vehicle?"
+            if "location" in missing_fields and "complaint" in missing_fields:
+                return "What vehicle do you need service for?"
             return (
                 "What's the vehicle's VIN? If you don't have it, the make and model are fine — "
                 "otherwise a unit number or nickname works too."

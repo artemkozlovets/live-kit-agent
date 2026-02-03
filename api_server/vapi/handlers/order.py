@@ -38,10 +38,19 @@ def _resolve_unit_id_from_service(
     if not isinstance(unit_nickname, str):
         unit_nickname = None
 
+    vehicle_make = service.get("vehicle_make")
+    if not isinstance(vehicle_make, str):
+        vehicle_make = None
+    vehicle_model = service.get("vehicle_model")
+    if not isinstance(vehicle_model, str):
+        vehicle_model = None
+
     return resolve_unit_or_create(
         vin_number=vin_number,
         unit_number=unit_number,
         unit_nickname=unit_nickname,
+        make=vehicle_make,
+        model=vehicle_model,
         db_client=database_client,
         customer_id=customer_id,
         auto_create=True,

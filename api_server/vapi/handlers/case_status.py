@@ -868,6 +868,68 @@ async def handle_get_case_status(
         )
         return case_status
 
+    if last_user_message is not None and call_id and category == MessageCategory.NORMAL:
+        current_phase = case_status.get("current_phase")
+        phase = current_phase.strip().lower() if isinstance(current_phase, str) else ""
+        if phase in {"service_collection", "booking"}:
+            services = session.get("services", [])
+            latest_service: dict[str, Any] | None = None
+            if isinstance(services, list) and services and isinstance(services[-1], dict):
+                latest_service = services[-1]
+            service_source = latest_service if latest_service is not None else session
+
+            service = (
+                case_status.get("service")
+                if isinstance(case_status.get("service"), dict)
+                else {}
+            )
+            unit_nickname = _normalize_optional_str(service.get("unit_nickname"))
+            unit_number = _normalize_optional_str(service.get("unit_number"))
+            vin_number = _normalize_optional_str(service.get("vin"))
+            has_location = _normalize_optional_str(service.get("location")) is not None
+            has_complaint = _normalize_optional_str(service.get("complaint")) is not None
+
+            validation_state = (
+                case_status.get("validation_state")
+                if isinstance(case_status.get("validation_state"), dict)
+                else {}
+            )
+            vin_fallback_triggered = validation_state.get("vin_fallback_triggered") is True
+            prompted = session.get("vin_or_make_model_prompted") is True
+            vehicle_make = _normalize_optional_str(service_source.get("vehicle_make"))
+            vehicle_model = _normalize_optional_str(service_source.get("vehicle_model"))
+            has_make_and_model = vehicle_make is not None and vehicle_model is not None
+
+            if (
+                unit_nickname is not None
+                and unit_number is None
+                and vin_number is None
+                and has_location
+                and has_complaint
+                and not vin_fallback_triggered
+                and not prompted
+                and not has_make_and_model
+            ):
+                # Reason: A nickname is the least-precise vehicle identifier. Ask at least once
+                # for a VIN (best) or make/model (fallback) to improve unit matching/creation,
+                # but do not block booking if the caller doesn't have it.
+                session["vin_or_make_model_prompted"] = True
+                session_store.set(call_id, session)
+
+                case_status.update(
+                    {
+                        "message_category": category.value,
+                        "response_mode": "speak_first",
+                        "immediate_message": (
+                            "Do you have the VIN for that vehicle? If not, what's the make and model (for example, Ford F-150)?"
+                        ),
+                        # Reason: This is a one-time optional prompt; don't trigger tool parsing yet.
+                        "then_action": "",
+                        "detected_corrections": None,
+                    }
+                )
+                return case_status
+
     response_mode, immediate_message, then_action_override = compute_response_mode(
         category=category,
         case_state=case_status,

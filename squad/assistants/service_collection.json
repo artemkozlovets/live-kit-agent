@@ -61,7 +61,9 @@
             },
             "vehicle_identifier": { "type": "string", "description": "Vehicle identifier value (VIN, unit number, or nickname)" },
             "service_location": { "type": "string", "description": "Where the vehicle is located" },
-            "service_complaint": { "type": "string", "description": "What service is needed" }
+            "service_complaint": { "type": "string", "description": "What service is needed" },
+            "vehicle_make": { "type": "string", "description": "Vehicle make (ex: Ford)" },
+            "vehicle_model": { "type": "string", "description": "Vehicle model (ex: F-150)" }
           }
         },
         "description": "Add a service to the session for later storage. Always include vehicle_identifier_type + vehicle_identifier."
@@ -119,7 +121,9 @@
                 "unit_number": { "type": "string" },
                 "unit_nickname": { "type": "string" },
                 "service_location": { "type": "string" },
-                "service_complaint": { "type": "string" }
+                "service_complaint": { "type": "string" },
+                "vehicle_make": { "type": "string" },
+                "vehicle_model": { "type": "string" }
               }
             },
             "order_id": { "type": "string" }
