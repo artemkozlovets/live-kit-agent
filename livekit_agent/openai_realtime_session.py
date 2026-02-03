@@ -78,6 +78,21 @@ def build_openai_realtime_session(*, modalities: list[str] | None = None, voice:
         # If TurnDetection isn't available for some reason, fall back to plugin defaults.
         pass
 
+    try:
+        from openai.types.realtime import AudioTranscription  # type: ignore
+
+        # Reason: Input transcripts are written into the conversation history and are used
+        # as the primary "user_text" signal for backend-first turn handling. For short
+        # utterances in noisy conditions, language auto-detection can produce non-English
+        # transcripts (e.g. "哈喽"), which then causes the assistant to mirror that language.
+        kwargs["input_audio_transcription"] = AudioTranscription(
+            model="gpt-4o-mini-transcribe",
+            language="en",
+        )
+    except Exception:  # pragma: no cover
+        # If AudioTranscription isn't available for some reason, fall back to plugin defaults.
+        pass
+
     discard_audio_if_uninterruptible = _bool_env("LK_DISCARD_AUDIO_IF_UNINTERRUPTIBLE")
     if discard_audio_if_uninterruptible is None:
         # Reason: The agent uses an uninterruptible phone greeting. The LiveKit default
