@@ -54,6 +54,28 @@ lk agent logs --log-type deploy
 lk agent status
 ```
 
+Notes:
+- `lk agent logs` is a **tail** command (stop with Ctrl+C). It doesn’t support `--lines`.
+
+## Optional: reduce interruptions (recommended for PSTN)
+If calls feel interrupt-y (especially on speakerphone / noisy environments), tune the Realtime turn detection and interruption thresholds via agent secrets.
+
+See `docs/documentations/voice-interruptions.md` for root causes and how to confirm via session reports.
+
+Recommended starting point:
+```bash
+lk agent update-secrets \
+  --secrets "OPENAI_REALTIME_EAGERNESS=low" \
+  --secrets "REALTIME_TRANSCRIPT_DEBOUNCE_S=0.6" \
+  --secrets "REALTIME_TRANSCRIPT_POST_SILENCE_S=0.3" \
+  --secrets "REALTIME_TRANSCRIPT_MAX_WAIT_S=8.0" \
+  --secrets "LK_MIN_INTERRUPTION_DURATION_S=1.0"
+```
+
+Notes:
+- Updating secrets restarts the agent.
+- After changing these, rerun the smoke gate: `./scripts/run_livekit_cloud_smoke.sh`.
+
 ## Smoke test (no browser)
 This repo’s recommended deploy gate is a **no-browser**, deterministic smoke test that:
 - creates a room,
@@ -92,4 +114,3 @@ Related: `docs/instructions/openai-realtime-rollout.md`
 ## Rollback
 - Paid plans support instant rollback: `lk agent rollback`
 - Otherwise: revert code to a known-good commit and redeploy with `lk agent deploy`.
-

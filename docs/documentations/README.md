@@ -43,4 +43,5 @@
 - [`docs/documentations/tech-copilot-comparison.md`](./tech-copilot-comparison.md)
 - [`docs/documentations/livekit-webrtc-debugging.md`](./livekit-webrtc-debugging.md)
 - [`docs/documentations/debug.md`](./debug.md)
+- [`docs/documentations/voice-interruptions.md`](./voice-interruptions.md)
 - [`docs/documentations/realtime-human-transfer.md`](./realtime-human-transfer.md)
