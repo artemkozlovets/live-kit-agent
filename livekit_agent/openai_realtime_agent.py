@@ -276,6 +276,24 @@ def _combine_instructions(*parts: str | None) -> str | None:
     return "\n\n".join(cleaned) if cleaned else None
 
 
+def _recap_policy_instructions(case_status: object) -> str | None:
+    if not isinstance(case_status, dict):
+        return None
+
+    current_phase = case_status.get("current_phase")
+    phase = current_phase.strip() if isinstance(current_phase, str) else ""
+    if phase == "booking":
+        return (
+            "Recap policy (booking): Give ONE concise recap of the service + location + vehicle only (do not read back contact details), "
+            "then ask for an explicit yes/no."
+        )
+
+    return (
+        "Recap policy (pre-booking): Do NOT repeat back the caller's provided details (name, phone, email, address, vehicle, location). "
+        "Acknowledge briefly (e.g., “Got it”) and ask the next missing item."
+    )
+
+
 class OpenAIRealtimeAgent(Agent):
     """OpenAI Realtime cutover agent (text-mode friendly).
 
@@ -339,6 +357,7 @@ class OpenAIRealtimeAgent(Agent):
                 "Conversation style:\n"
                 "- The caller may give a large info-dump (name, phone, address, etc.) in any order.\n"
                 "- Extract everything you can from each turn.\n"
+                "- Avoid repetition: do not read back the caller's details during slot-filling. Only do a single recap of service+location+vehicle, right before booking confirmation.\n"
                 "- Do NOT ask rigid one-by-one questions. If multiple things are missing, ask for them together.\n"
                 "- If the caller says 'start over' / 'throw away that info', discard the previously collected details and continue fresh.\n"
                 "\n"
@@ -357,6 +376,7 @@ class OpenAIRealtimeAgent(Agent):
                 "- If you receive a system message containing JSON like {\"case_status\": ...}, treat it as authoritative backend guidance.\n"
                 "- If you receive a system message containing JSON like {\"tool_prefetch\": ...}, treat it as authoritative tool results.\n"
                 "- You may also receive authoritative JSON inside per-turn instructions. Treat it the same way.\n"
+                "- The backend guidance JSON may include `customer_known_data` (PII). Use it only for tool arguments and never read it to the caller.\n"
                 "- Never answer general knowledge or trivia. If asked unrelated questions, refuse briefly and immediately redirect to roadside assistance.\n"
             ),
             tools=tools,
@@ -870,6 +890,7 @@ class OpenAIRealtimeAgent(Agent):
             chat_ctx=turn_ctx,
             instructions=_combine_instructions(
                 language_instructions,
+                _recap_policy_instructions(case_status),
                 f"Authoritative backend guidance (JSON): {payload_json}",
             ),
         )

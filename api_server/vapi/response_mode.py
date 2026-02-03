@@ -41,7 +41,18 @@ def _normal_immediate_message(case_state: dict[str, Any]) -> str | None:
 
     if current_phase == "service_collection":
         if missing_fields.intersection({"vin", "unit_number", "unit_nickname", "vehicle_identifier"}):
-            return "What vehicle do you need service for?"
+            validation_state = (
+                case_state.get("validation_state")
+                if isinstance(case_state.get("validation_state"), dict)
+                else {}
+            )
+            vin_fallback_triggered = validation_state.get("vin_fallback_triggered")
+            if vin_fallback_triggered is True:
+                return "No worries — what's the unit number or a nickname for the vehicle?"
+            return (
+                "What's the vehicle's VIN? If you don't have it, the make and model are fine — "
+                "otherwise a unit number or nickname works too."
+            )
         if "location" in missing_fields:
             return "Where is the vehicle located?"
         if "complaint" in missing_fields:
