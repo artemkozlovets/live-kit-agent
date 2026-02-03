@@ -10,7 +10,7 @@ If the commit includes brand-new files, use the one-liner:
 
 After committing, print a short confirmation (commit hash + subject line).
 
-## Commit Format (default: include a body)
+## Commit Format (default: short)
 
 ### Summary line (always required)
 ```
@@ -23,24 +23,25 @@ Rules:
 - Keep the summary line ≤ 72 characters total (including `[Category] `).
 - Be specific (avoid “updates”, “various fixes”).
 
-### Body (default: include these sections)
-Use markdown-style headings and bullets for readability. Keep every statement
-grounded in the diff and/or the current session context (don’t speculate).
+### Body (optional; keep it tiny)
+Default to **no body** unless it adds real value. If you add one, prefer 3–10 lines max.
 
-Required sections:
-- `## What Changed` **or** `## Problems Fixed`
-- `## Why` (use current task/session intent when available)
-- `## How to Verify` (tests/commands you actually ran; otherwise explicitly say `Not run`)
-- `## Files Changed` (repo-relative paths, one per line)
+Recommended minimal body template:
+```
+Files:
+- path/to/file1
+- path/to/file2
 
-Additionally required for certain categories:
-- `## Root Causes` (required for `[Critical Fix]` and `[Temporary Rollback]`, but only when it is clear from the diff/context)
+How to verify:
+- Not run
+```
+
+If you have `--stat` output that’s short, it’s okay to include it instead of the
+file list, but do **not** paste full patch diffs.
 
 Optional sections:
-- `## Solutions` (useful for multi-file changes)
-- `## Impact` (user-facing behavior, performance, ops, etc.)
-- `## Related Issues/PRs`
-- `## Next Steps`
+- `Why` (only when the user asked for it / task context is clear)
+- `How to verify` (only if you actually ran commands)
 
 Formatting rules:
 - Use bullets (`- ...`) for readability.
@@ -58,6 +59,7 @@ Use one of these category prefixes:
 - `[Test]` - Test additions or modifications
 - `[Config]` - Configuration changes
 - `[Cleanup]` - Code cleanup, removing dead code
+- `[Chore]` - Misc changes / “commit current work”
 - `[Merge]` - Merge commits
 - `[Checks]` - CI/CD, GitHub Actions
 - `[Temporary Rollback]` - Temporary reverts
@@ -65,15 +67,19 @@ Use one of these category prefixes:
 ## Automatic Mode (default)
 Do not ask the user to fill in a template.
 
-If you can’t confidently identify which files belong in this commit (e.g.,
-multiple unrelated changes are present), stop and ask rather than guessing.
+Default behavior: commit **everything currently shown in** `git status --porcelain=v1`
+(minus obvious junk like `.DS_Store`). Only stop and ask if:
+- The user asked for a scoped/atomic commit, or
+- The status includes likely-unwanted files and you need confirmation.
 
-### 1) Gather change data (only the files you’re committing)
+### 1) Gather change metadata (fast; no patch diffs)
 - Check status: `git status --porcelain=v1 -b`
 - Ensure staging is empty: `git diff --cached --name-only`
-- Use diffs scoped to the commit’s file list:
-  - `git diff -- path/to/file1 path/to/file2`
-  - If you staged any brand-new files: `git diff --cached -- path/to/new_file1`
+- Build the file list from `git status --porcelain=v1` output (plus any brand-new files you stage).
+- Use **metadata-only** diffs scoped to that file list:
+  - `git diff --name-status -- path/to/file1 path/to/file2`
+  - `git diff --stat -- path/to/file1 path/to/file2`
+  - If you staged any brand-new files: `git diff --cached --name-status -- path/to/new_file1` and `git diff --cached --stat -- path/to/new_file1`
 
 ### 2) Pick the category (heuristics)
 Choose the most fitting category based on the files/changes:
@@ -84,30 +90,36 @@ Choose the most fitting category based on the files/changes:
 - Only `.codex/` (new/updated Codex tools) → `[Feature]`
 - Mostly deletions / dead code removal → `[Cleanup]`
 - Mostly restructures/renames without behavior change → `[Refactor]`
+- Otherwise / mixed changes → `[Chore]`
 
 Avoid `[Critical Fix]` / `[Temporary Rollback]` unless the diff clearly shows a bug fix
-and you can write a non-speculative `## Root Causes` section.
+and you can write a non-speculative `Root Causes` section.
 
 ### 3) Generate the summary line (always)
 - Imperative mood, specific, ≤ 72 chars total (including `[Category] `).
-- Base nouns/verbs on what actually changed in the diff (don’t guess).
+- Base nouns/verbs on what you can infer from filenames and `--stat/--name-status` (don’t guess).
 
-### 4) Always include a body (default)
-Default to the multi-line format with the required sections, even for small
-changes. Keep it short (2-6 bullets per section).
+### 4) Body (default: omit)
+If you include a body, limit it to file list (and optional “Not run” verify line).
 
 ## Decision Rules (how to generate)
 1. **Pick the category** from the allowed list (normalize obvious variants like `critical fix` → `Critical Fix`).
 2. **Write the summary** in imperative mood and keep ≤ 72 chars total.
-3. **Write the required body sections** (`What Changed/Problems Fixed`, `Why`, `How to Verify`, `Files Changed`).
-4. **No speculation**: if you can’t justify a claim from the diff/context, omit it or phrase it conservatively.
-5. **Testing honesty**: only claim tests ran if they actually ran in this session.
+3. **No speculation**: if you can’t justify a claim from filenames / stats / context, omit it.
+4. **Testing honesty**: only claim tests ran if they actually ran in this session.
 
 ## Examples
 
-### Simple (rare; only when explicitly requested)
+### Fast (default)
 ```
-[Feature] Add user profile page with avatar upload
+[Chore] Commit current changes
+
+Files:
+- livekit_agent/openai_realtime_agent.py
+- livekit_agent/tests/test_openai_realtime_agent_language_preference.py (new)
+
+How to verify:
+- Not run
 ```
 
 ### Feature with details

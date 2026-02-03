@@ -356,7 +356,7 @@ These env vars increase signal or timing detail:
 - `LOG_PII=1` (disables masking of call IDs/phone numbers; avoid in prod)
 - `LK_OPENAI_DEBUG=1` (agent: logs OpenAI Realtime websocket events; high-volume; likely contains PII)
 - `VOICE_DEBUG=1` (agent: structured voice/turn logs; transcripts redacted unless `LOG_PII=1`)
-- `REALTIME_TRANSCRIPT_DEBOUNCE_S=0.6` (agent: debounce final transcript bursts before triggering the backend-first reply loop)
+- `REALTIME_TRANSCRIPT_DEBOUNCE_S=0.25` (agent: debounce final transcript bursts before triggering the backend-first reply loop)
 - `REALTIME_TRANSCRIPT_POST_SILENCE_S=0.3` (agent: minimum stable “user stopped speaking” time before triggering a reply)
 - `REALTIME_TRANSCRIPT_MAX_WAIT_S=8.0` (agent: max time to wait for user to stop speaking before replying)
 - `VAPI_TOOLS_LOG_TIMING=1` (tools timing logs in API server; legacy name)
@@ -370,6 +370,7 @@ These env vars increase signal or timing detail:
 - `LK_MIN_INTERRUPTION_WORDS=...` (agent: require at least N transcribed words before interrupting the agent)
 - `LK_FALSE_INTERRUPTION_TIMEOUT_S=...` (agent: how long to wait before treating an interruption as false; set `<0` to disable)
 - `LK_RESUME_FALSE_INTERRUPTION=true|false` (agent: whether to resume after a false interruption)
+- `LK_DISCARD_AUDIO_IF_UNINTERRUPTIBLE=true|false` (agent: whether to drop user audio while an uninterruptible speech is playing; set `false` to avoid "first words ignored" during the phone greeting)
 
 When `LOCAL_OBSERVABILITY_DIR` is set:
 - Backend writes:
@@ -410,6 +411,11 @@ python -m pytest -q
 
 ```
 
+Quick voice sanity check (no network, no mic):
+```bash
+./scripts/run_openai_realtime_voice_smoke.sh
+```
+
 ## When asking for help (keep it short)
 Provide:
 - `serverUrl` (non-secret) + token **payload** (redact signature)
@@ -421,10 +427,21 @@ Provide:
 ## Failure modes / gotchas (high-signal)
 - **Symptom:** agent sounds like it is "talking to itself" / constantly interrupts / responses get cancelled (can feel like "two agents")  
   **Likely cause:** barge-in/echo (most common: mobile speakerphone or laptop speakers causing the agent's audio to re-trigger the mic)  
-  **Fix:** turn off speakerphone, use headphones/earpiece, lower volume, verify input/output devices (`python -m livekit_agent.agent console --list-devices`)
+  **Fix:** turn off speakerphone, use headphones/earpiece, lower volume, verify input/output devices (`python -m livekit_agent.agent console --list-devices`)  
+  **Extra note (this repo):** the agent’s initial greeting is uninterruptible; if it gets transcribed as user input, it can trigger the turn loop. The agent now ignores a transcript that matches the greeting text within a short window, but real echo can still cause self-talk.
+- **Symptom:** first words ignored right after the greeting (caller starts talking, but the agent “misses” it)  
+  **Likely cause:** the greeting is sent with `allow_interruptions=false`. LiveKit Agents defaults `discard_audio_if_uninterruptible=true`, which drops user audio during uninterruptible speech.  
+  **Fix:** set `LK_DISCARD_AUDIO_IF_UNINTERRUPTIBLE=false` (the repo default) so user audio is buffered instead of dropped during the greeting. If you want the old behavior, set it back to `true`.
 - **Symptom:** greeting plays, you speak, then silence (no follow-up reply)  
   **Likely cause:** Realtime server-side turn detection + `turn_detection.create_response=false` → the SDK may not call `on_user_turn_completed`, so no backend-first reply trigger occurs  
   **Fix:** enable `VOICE_DEBUG=1` and look for `VOICE_DEBUG user_input_transcribed` without a later `VOICE_DEBUG speech_created`; ensure the transcript-driven fallback is active in [`OpenAIRealtimeAgent._install_realtime_transcript_listener`](../../livekit_agent/openai_realtime_agent.py#L267) and that backend guidance is being injected via per-turn `instructions` (see [`OpenAIRealtimeAgent._handle_user_text_turn`](../../livekit_agent/openai_realtime_agent.py#L332))
+- **Symptom:** slow response after you stop talking (noticeable “dead air”)  
+  **Likely causes:**  
+  - Your debounce/silence gates (`REALTIME_TRANSCRIPT_DEBOUNCE_S`, `REALTIME_TRANSCRIPT_POST_SILENCE_S`) add intentional delay to avoid mid-sentence cutoffs.  
+  - Backend-first mode blocks on `get_case_status` each turn, so `/tools` latency becomes dead air.  
+  - Realtime model TTFT varies per request.  
+  **How to measure:** enable `VOICE_DEBUG=1` and compare timestamps for `user_input_transcribed` → `VOICE_DEBUG backend_tool_ok` → `speech_created`.  
+  **Fix:** lower `REALTIME_TRANSCRIPT_DEBOUNCE_S` / `REALTIME_TRANSCRIPT_POST_SILENCE_S`, or temporarily set `AGENT_BACKEND_GUARDRAILS=false` to confirm whether the backend call is the dominant contributor.
 - **Symptom:** caller asks to transfer to a human, but the agent says it can’t / “technical issues”  
   **Likely cause:** the `transfer_to_human` tool ran but LiveKit rejected it because LiveKit Phone Numbers don’t support transfers yet  
   **Fix:** fetch the call’s session report and look for `function_tools_executed` output `{"ok": false, "error": {"code": "transfer_not_supported", ...}}`; to actually enable transfers, switch to a SIP trunk provider (ex: Twilio) with SIP REFER/PSTN transfer enabled (see `docs/documentations/realtime-human-transfer.md`)

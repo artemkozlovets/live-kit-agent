@@ -65,6 +65,34 @@ without mic permissions, LiveKit rooms, or the tools backend:
 Expected:
 - `assistant.wav` exists and contains audible speech.
 
+### No-network voice logic smoke (agent-only)
+Use this when you want to validate **“do our Realtime turn hooks behave sanely?”**
+without OpenAI network calls, mic permissions, or LiveKit rooms:
+
+```bash
+./scripts/run_openai_realtime_voice_smoke.sh
+```
+
+What it checks:
+- The session defaults to buffering user audio during uninterruptible speech (`LK_DISCARD_AUDIO_IF_UNINTERRUPTIBLE=false`).
+- The agent ignores a transcript that matches the phone greeting (helps prevent self-talk/echo loops).
+- The transcript-driven turn loop triggers within a small latency budget (regression guard).
+
+Scenarios:
+- `session_options`: validates session defaults are safe for an uninterruptible greeting.
+- `greeting_echo_filter`: simulates a greeting being transcribed as user input and ensures it’s ignored, then ensures a real user turn triggers the backend-first loop.
+- `turn_latency`: measures transcript→reply trigger time and fails if it exceeds `--turn-latency-max-s` (default: `0.55`).
+
+Expected output:
+- `OK: session_options`
+- `OK: greeting_echo_filter`
+- `turn_latency_s=...`
+- `OK: turn_latency`
+
+What it does *not* prove:
+- Real microphone audio, LiveKit transport timing, PSTN echo conditions, or “first words after greeting” in a real call.
+- Use `./scripts/run_local_audio_console.sh`, LiveKit Cloud smoke, and/or a real phone call for those.
+
 ### No-mic customer lookup smoke (backend DB)
 Use this when you want to validate **“does `check_customer` find the caller in the DB?”**
 without mic permissions or LiveKit rooms:

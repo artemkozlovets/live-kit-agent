@@ -78,6 +78,14 @@ def build_openai_realtime_session(*, modalities: list[str] | None = None, voice:
         # If TurnDetection isn't available for some reason, fall back to plugin defaults.
         pass
 
+    discard_audio_if_uninterruptible = _bool_env("LK_DISCARD_AUDIO_IF_UNINTERRUPTIBLE")
+    if discard_audio_if_uninterruptible is None:
+        # Reason: The agent uses an uninterruptible phone greeting. The LiveKit default
+        # (`discard_audio_if_uninterruptible=True`) can cause callers who speak during
+        # the greeting to have their first words dropped.
+        discard_audio_if_uninterruptible = False
+    session_kwargs["discard_audio_if_uninterruptible"] = discard_audio_if_uninterruptible
+
     min_interruption_duration = _float_env("LK_MIN_INTERRUPTION_DURATION_S")
     if min_interruption_duration is not None and min_interruption_duration >= 0:
         session_kwargs["min_interruption_duration"] = min_interruption_duration

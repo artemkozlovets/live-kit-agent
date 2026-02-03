@@ -2,6 +2,7 @@
 __pycache__/
 .pytest_cache/
 .env
+.DS_Store
 
 # Local debug artifacts (generated)
 console-recordings/session-*/

@@ -24,6 +24,10 @@
 - `squad/assistants/*.prompt.md` define intended flows and tools, but are **not loaded** by the
   OpenAI Realtime agent at runtime. Update the runtime instructions if behavior needs tightening.
 
+Language behavior (runtime):
+- Default: **English-only** responses.
+- If the caller speaks Spanish, the agent asks: “Would you prefer to speak in Spanish?” and only switches after an explicit confirmation.
+
 ## Runtime flow (happy path)
 1. LiveKit starts the agent worker (`python -m livekit_agent.agent ...`).
 2. `livekit_agent/agent.py` builds an OpenAI Realtime `AgentSession` and starts `OpenAIRealtimeAgent`.

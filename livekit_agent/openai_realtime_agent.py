@@ -24,9 +24,54 @@ _PHONE_AFTER_LABEL_RE = re.compile(
 )
 _PHONE_ANYWHERE_RE = re.compile(r"(\+?\d[\d\s\-\(\)]{8,}\d)")
 
+_SPANISH_REQUEST_RE = re.compile(r"\b(?:spanish|español|espanol)\b", flags=re.IGNORECASE)
+_ENGLISH_REQUEST_RE = re.compile(r"\b(?:english|inglés|ingles)\b", flags=re.IGNORECASE)
+_SAY_EXACTLY_PREFIX_RE = re.compile(r"^\s*say\s+exactly\s*:\s*", flags=re.IGNORECASE)
+
+_SPANISH_HINT_WORDS: frozenset[str] = frozenset(
+    {
+        "hola",
+        "buenos",
+        "buenas",
+        "gracias",
+        "por",
+        "favor",
+        "necesito",
+        "ayuda",
+        "mi",
+        "nombre",
+        "es",
+        "estoy",
+        "tengo",
+        "quiero",
+        "porfavor",
+        "aqui",
+        "aquí",
+        "si",
+        "sí",
+        "claro",
+    }
+)
+
 
 def _digits_only(value: str) -> str:
     return re.sub(r"\D", "", value)
+
+
+def _strip_say_exactly_prefix(value: str) -> str:
+    return _SAY_EXACTLY_PREFIX_RE.sub("", value or "").strip()
+
+
+def _normalize_transcript_for_comparison(value: str) -> str:
+    """Normalize text for best-effort equality checks.
+
+    Reason: Realtime transcripts can differ slightly from the original text (punctuation,
+    spacing). For echo detection we only need a stable comparison key.
+    """
+
+    lowered = (value or "").casefold()
+    lowered = re.sub(r"[^a-z0-9+]+", " ", lowered)
+    return re.sub(r"\s+", " ", lowered).strip()
 
 
 def _normalize_tel_target(value: str) -> str | None:
@@ -112,6 +157,125 @@ def _extract_phone_candidate(text: str) -> str | None:
     return None
 
 
+def _normalize_language_text(text: str) -> str:
+    # Reason: stable normalization for language/yes-no intent checks.
+    lowered = text.casefold()
+    lowered = lowered.replace("¿", " ").replace("¡", " ")
+    lowered = re.sub(r"[^a-z0-9áéíóúñü\s]+", " ", lowered)
+    return re.sub(r"\s+", " ", lowered).strip()
+
+
+def _looks_like_spanish(text: str, *, language_hint: str | None = None) -> bool:
+    if isinstance(language_hint, str) and language_hint.strip().casefold().startswith("es"):
+        return True
+
+    normalized = _normalize_language_text(text)
+    if not normalized:
+        return False
+
+    if any(ch in text for ch in ("¿", "¡", "ñ", "á", "é", "í", "ó", "ú", "ü")):
+        # If we see Spanish punctuation/diacritics, a single hint word is enough.
+        tokens = set(normalized.split())
+        return bool(tokens & _SPANISH_HINT_WORDS)
+
+    tokens = set(normalized.split())
+    # Heuristic: require multiple common Spanish tokens to reduce false positives.
+    return len(tokens & _SPANISH_HINT_WORDS) >= 2
+
+
+def _language_choice(text: str) -> str | None:
+    """Return 'es' or 'en' if the user is clearly choosing a language."""
+
+    normalized = _normalize_language_text(text)
+    if not normalized:
+        return None
+
+    if _SPANISH_REQUEST_RE.search(normalized):
+        return "es"
+    if _ENGLISH_REQUEST_RE.search(normalized):
+        return "en"
+
+    # Short confirmations in Spanish/English.
+    if normalized in {"si", "sí", "claro", "ok", "okay", "yes", "yeah", "yep", "sure"}:
+        return "es"
+    if normalized in {"no", "nope"}:
+        return "en"
+
+    return None
+
+
+def _looks_like_language_control_message(text: str) -> bool:
+    # Reason: avoid calling the backend on "language selection" turns.
+    normalized = _normalize_language_text(text)
+    if not normalized:
+        return False
+
+    if normalized in {"si", "sí", "claro", "ok", "okay", "yes", "yeah", "yep", "sure", "no", "nope"}:
+        return True
+
+    # If the message mentions a language but is otherwise just filler words, treat it as
+    # a language-only control message (e.g., "Can we do this in Spanish?").
+    if not (_SPANISH_REQUEST_RE.search(normalized) or _ENGLISH_REQUEST_RE.search(normalized)):
+        return False
+
+    tokens = normalized.split()
+    stopwords: set[str] = {
+        "a",
+        "an",
+        "and",
+        "can",
+        "could",
+        "do",
+        "does",
+        "english",
+        "espanol",
+        "español",
+        "in",
+        "ingles",
+        "inglés",
+        "let",
+        "lets",
+        "me",
+        "no",
+        "please",
+        "por",
+        "favor",
+        "podemos",
+        "podria",
+        "podría",
+        "puede",
+        "puedes",
+        "speak",
+        "spanish",
+        "talk",
+        "this",
+        "to",
+        "us",
+        "we",
+        "with",
+        "would",
+        "you",
+        "yo",
+        "quiero",
+        "hablar",
+        "en",
+    }
+
+    remaining = [t for t in tokens if t not in stopwords]
+    return not remaining
+
+
+def _combine_instructions(*parts: str | None) -> str | None:
+    cleaned: list[str] = []
+    for part in parts:
+        if not isinstance(part, str):
+            continue
+        stripped = part.strip()
+        if stripped:
+            cleaned.append(stripped)
+    return "\n\n".join(cleaned) if cleaned else None
+
+
 class OpenAIRealtimeAgent(Agent):
     """OpenAI Realtime cutover agent (text-mode friendly).
 
@@ -167,6 +331,11 @@ class OpenAIRealtimeAgent(Agent):
             instructions=(
                 "You are Sarah, a helpful voice agent for American Fleet Services (AFS).\n"
                 "\n"
+                "Language:\n"
+                "- Speak English by default.\n"
+                "- Only switch to Spanish after the caller confirms they want Spanish.\n"
+                "- Once a language is chosen, stick to it.\n"
+                "\n"
                 "Conversation style:\n"
                 "- The caller may give a large info-dump (name, phone, address, etc.) in any order.\n"
                 "- Extract everything you can from each turn.\n"
@@ -213,6 +382,11 @@ class OpenAIRealtimeAgent(Agent):
         self._last_user_state: str | None = None
         self._last_user_state_changed_at_wallclock_unix_s = 0.0
         self._user_state_change_event = asyncio.Event()
+        self._preferred_language: str = "en"
+        self._language_offer_pending = False
+        self._last_user_input_language: str | None = None
+        self._phone_greeting_expected_transcript_norm: str | None = None
+        self._phone_greeting_expected_set_at_wallclock_unix_s = 0.0
 
     def _get_session_room(self) -> rtc.Room | None:
         """Safely fetch the active rtc.Room for this session.
@@ -267,6 +441,34 @@ class OpenAIRealtimeAgent(Agent):
             )
 
         return f"Say exactly: Hello, this is {operator_name} from {company}. How can I help you today?"
+
+    def _language_lock_instructions(self) -> str:
+        if self._preferred_language == "es":
+            return "Language:\n- Speak Spanish only."
+        return "Language:\n- Speak English only."
+
+    def _maybe_offer_spanish_instructions(self, user_text: str) -> str | None:
+        if self._preferred_language != "en":
+            return None
+        if self._language_offer_pending:
+            return None
+        if not _looks_like_spanish(user_text, language_hint=self._last_user_input_language):
+            return None
+
+        # Reason: Avoid auto-switching languages. Ask once, then only switch after confirmation.
+        self._language_offer_pending = True
+        return 'Also ask: "Would you prefer to speak in Spanish?" (Do not switch unless the caller confirms.)'
+
+    def _language_confirmation_instructions(self, *, language: str) -> str:
+        if language == "es":
+            return (
+                'Say exactly: Perfecto — hablemos en español. '
+                "Si prefieres inglés, solo dime “English”."
+            )
+        return (
+            "Say exactly: No problem — we can continue in English. "
+            "If you'd prefer Spanish, just say “Spanish”."
+        )
 
     def _refresh_sip_phone_number_from_room(self) -> None:
         """Best-effort extraction of caller ID from the active room.
@@ -371,8 +573,27 @@ class OpenAIRealtimeAgent(Agent):
                 created_at_unix_s = float(created_at) if isinstance(created_at, (int, float)) else 0.0
                 if created_at_unix_s and created_at_unix_s <= self._last_final_transcript_unix_s:
                     return
+
+                greeting_norm = self._phone_greeting_expected_transcript_norm
+                if greeting_norm:
+                    if (time.time() - self._phone_greeting_expected_set_at_wallclock_unix_s) > 20.0:
+                        self._phone_greeting_expected_transcript_norm = None
+                        self._phone_greeting_expected_set_at_wallclock_unix_s = 0.0
+                    else:
+                        transcript_norm = _normalize_transcript_for_comparison(transcript)
+                        if transcript_norm == greeting_norm:
+                            # Reason: If the caller is on speakerphone, the agent's own uninterruptible greeting
+                            # can be picked up and transcribed as user input, leading to "talking to itself".
+                            return
+                        self._phone_greeting_expected_transcript_norm = None
+                        self._phone_greeting_expected_set_at_wallclock_unix_s = 0.0
+
                 if created_at_unix_s:
                     self._last_final_transcript_unix_s = created_at_unix_s
+
+                language = getattr(ev, "language", None)
+                if isinstance(language, str) and language.strip():
+                    self._last_user_input_language = language.strip().casefold()
 
                 self._queue_realtime_user_text_turn(user_text=transcript, created_at_unix_s=created_at_unix_s)
             except Exception:
@@ -434,7 +655,7 @@ class OpenAIRealtimeAgent(Agent):
 
         # Give the SDK a chance to call `on_user_turn_completed` (in configs where it applies),
         # and debounce bursts of final transcripts that happen before the end of a real turn.
-        debounce_s = 0.6
+        debounce_s = 0.25
         raw_debounce = os.getenv("REALTIME_TRANSCRIPT_DEBOUNCE_S", "").strip()
         if raw_debounce:
             try:
@@ -512,6 +733,33 @@ class OpenAIRealtimeAgent(Agent):
         if not user_text:
             return
 
+        normalized_for_lang = _normalize_language_text(user_text)
+        has_language_keyword = bool(
+            _SPANISH_REQUEST_RE.search(normalized_for_lang) or _ENGLISH_REQUEST_RE.search(normalized_for_lang)
+        )
+
+        if self._language_offer_pending or has_language_keyword:
+            choice = _language_choice(user_text)
+            if choice in {"en", "es"}:
+                self._preferred_language = choice
+                self._language_offer_pending = False
+
+                if _looks_like_language_control_message(user_text):
+                    self.session.generate_reply(
+                        instructions=_combine_instructions(
+                            self._language_lock_instructions(),
+                            self._language_confirmation_instructions(language=choice),
+                            "Do not call any tools.",
+                        ),
+                        allow_interruptions=False,
+                    )
+                    return
+
+        language_instructions = _combine_instructions(
+            self._language_lock_instructions(),
+            self._maybe_offer_spanish_instructions(user_text),
+        )
+
         if not self._use_backend_guardrails:
             tool_prefetch: dict[str, Any] = {}
             ready_for_customer_lookup = False
@@ -586,10 +834,17 @@ class OpenAIRealtimeAgent(Agent):
                 self.session.generate_reply(
                     user_input=user_text,
                     chat_ctx=turn_ctx,
-                    instructions=f"Authoritative tool results (JSON): {payload_json}",
+                    instructions=_combine_instructions(
+                        language_instructions,
+                        f"Authoritative tool results (JSON): {payload_json}",
+                    ),
                 )
             else:
-                self.session.generate_reply(user_input=user_text, chat_ctx=turn_ctx)
+                self.session.generate_reply(
+                    user_input=user_text,
+                    chat_ctx=turn_ctx,
+                    instructions=language_instructions,
+                )
             return
 
         try:
@@ -613,7 +868,10 @@ class OpenAIRealtimeAgent(Agent):
         self.session.generate_reply(
             user_input=user_text,
             chat_ctx=turn_ctx,
-            instructions=f"Authoritative backend guidance (JSON): {payload_json}",
+            instructions=_combine_instructions(
+                language_instructions,
+                f"Authoritative backend guidance (JSON): {payload_json}",
+            ),
         )
 
     async def _handle_realtime_user_text_turn(self, user_text: str) -> None:
@@ -669,9 +927,17 @@ class OpenAIRealtimeAgent(Agent):
                 for p in room.remote_participants.values()
             )
             if has_sip_participant:
+                greeting = self._build_phone_greeting(first_name=None, caller_phone=None)
+                self._phone_greeting_expected_transcript_norm = _normalize_transcript_for_comparison(
+                    _strip_say_exactly_prefix(greeting)
+                )
+                self._phone_greeting_expected_set_at_wallclock_unix_s = time.time()
                 self._did_phone_greeting = True
                 self.session.generate_reply(
-                    instructions=self._build_phone_greeting(first_name=None, caller_phone=None),
+                    instructions=_combine_instructions(
+                        self._language_lock_instructions(),
+                        greeting,
+                    ),
                     # Reason: Prevent echo/false barge-ins from cutting off the initial greeting.
                     allow_interruptions=False,
                 )
@@ -689,9 +955,17 @@ class OpenAIRealtimeAgent(Agent):
                 tool_arguments={"last_user_message": " "},
             )
         except BackendToolsClientError:
+            greeting = self._build_phone_greeting(first_name=None, caller_phone=caller_phone)
+            self._phone_greeting_expected_transcript_norm = _normalize_transcript_for_comparison(
+                _strip_say_exactly_prefix(greeting)
+            )
+            self._phone_greeting_expected_set_at_wallclock_unix_s = time.time()
             self._did_phone_greeting = True
             self.session.generate_reply(
-                instructions=self._build_phone_greeting(first_name=None, caller_phone=caller_phone),
+                instructions=_combine_instructions(
+                    self._language_lock_instructions(),
+                    greeting,
+                ),
                 # Reason: Prevent echo/false barge-ins from cutting off the initial greeting.
                 allow_interruptions=False,
             )
@@ -703,9 +977,17 @@ class OpenAIRealtimeAgent(Agent):
             if isinstance(candidate, str) and candidate.strip():
                 first_name = candidate.strip()
 
+        greeting = self._build_phone_greeting(first_name=first_name, caller_phone=caller_phone)
+        self._phone_greeting_expected_transcript_norm = _normalize_transcript_for_comparison(
+            _strip_say_exactly_prefix(greeting)
+        )
+        self._phone_greeting_expected_set_at_wallclock_unix_s = time.time()
         self._did_phone_greeting = True
         self.session.generate_reply(
-            instructions=self._build_phone_greeting(first_name=first_name, caller_phone=caller_phone),
+            instructions=_combine_instructions(
+                self._language_lock_instructions(),
+                greeting,
+            ),
             # Reason: Prevent echo/false barge-ins from cutting off the initial greeting.
             allow_interruptions=False,
         )
