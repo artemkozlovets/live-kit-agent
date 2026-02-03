@@ -767,7 +767,13 @@ class OpenAIRealtimeAgent(Agent):
 
         await self._handle_realtime_user_text_turn(user_text)
 
-    async def _handle_user_text_turn(self, *, user_text: str, turn_ctx: ChatContext) -> None:
+    async def _handle_user_text_turn(
+        self,
+        *,
+        user_text: str,
+        turn_ctx: ChatContext,
+        user_message_already_in_history: bool = False,
+    ) -> None:
         if self._fatal_error:
             return
 
@@ -801,6 +807,9 @@ class OpenAIRealtimeAgent(Agent):
             self._language_lock_instructions(),
             self._maybe_offer_spanish_instructions(user_text),
         )
+
+        has_llm = getattr(self.session, "llm", None) is not None
+        should_include_user_input = not (user_message_already_in_history and has_llm)
 
         if not self._use_backend_guardrails:
             tool_prefetch: dict[str, Any] = {}
@@ -873,20 +882,35 @@ class OpenAIRealtimeAgent(Agent):
 
                 # Reason: Realtime models do not currently consume `chat_ctx` from `generate_reply`.
                 # Pass the tool results as extra per-turn instructions so they are visible to the model.
-                self.session.generate_reply(
-                    user_input=user_text,
-                    chat_ctx=turn_ctx,
-                    instructions=_combine_instructions(
-                        language_instructions,
-                        f"Authoritative tool results (JSON): {payload_json}",
-                    ),
-                )
+                if should_include_user_input:
+                    self.session.generate_reply(
+                        user_input=user_text,
+                        chat_ctx=turn_ctx,
+                        instructions=_combine_instructions(
+                            language_instructions,
+                            f"Authoritative tool results (JSON): {payload_json}",
+                        ),
+                    )
+                else:
+                    self.session.generate_reply(
+                        chat_ctx=turn_ctx,
+                        instructions=_combine_instructions(
+                            language_instructions,
+                            f"Authoritative tool results (JSON): {payload_json}",
+                        ),
+                    )
             else:
-                self.session.generate_reply(
-                    user_input=user_text,
-                    chat_ctx=turn_ctx,
-                    instructions=language_instructions,
-                )
+                if should_include_user_input:
+                    self.session.generate_reply(
+                        user_input=user_text,
+                        chat_ctx=turn_ctx,
+                        instructions=language_instructions,
+                    )
+                else:
+                    self.session.generate_reply(
+                        chat_ctx=turn_ctx,
+                        instructions=language_instructions,
+                    )
             return
 
         try:
@@ -907,19 +931,33 @@ class OpenAIRealtimeAgent(Agent):
 
         # Reason: Realtime models do not currently consume `chat_ctx` from `generate_reply`.
         # Pass backend guidance as extra per-turn instructions so it is visible to the model.
-        self.session.generate_reply(
-            user_input=user_text,
-            chat_ctx=turn_ctx,
-            instructions=_combine_instructions(
-                language_instructions,
-                _recap_policy_instructions(case_status),
-                f"Authoritative backend guidance (JSON): {payload_json}",
-            ),
-        )
+        if should_include_user_input:
+            self.session.generate_reply(
+                user_input=user_text,
+                chat_ctx=turn_ctx,
+                instructions=_combine_instructions(
+                    language_instructions,
+                    _recap_policy_instructions(case_status),
+                    f"Authoritative backend guidance (JSON): {payload_json}",
+                ),
+            )
+        else:
+            self.session.generate_reply(
+                chat_ctx=turn_ctx,
+                instructions=_combine_instructions(
+                    language_instructions,
+                    _recap_policy_instructions(case_status),
+                    f"Authoritative backend guidance (JSON): {payload_json}",
+                ),
+            )
 
     async def _handle_realtime_user_text_turn(self, user_text: str) -> None:
         async with self._realtime_turn_lock:
-            await self._handle_user_text_turn(user_text=user_text, turn_ctx=ChatContext())
+            await self._handle_user_text_turn(
+                user_text=user_text,
+                turn_ctx=ChatContext(),
+                user_message_already_in_history=True,
+            )
 
     async def on_enter(self) -> None:
         """Greet inbound SIP callers immediately, using caller ID lookup when possible."""

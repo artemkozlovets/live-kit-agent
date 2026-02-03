@@ -1,6 +1,6 @@
 # Voice Interruptions + “Rigid Workflow While Caller Is Speaking”
 
-> **Last Updated**: 2026-02-02  
+> **Last Updated**: 2026-02-03  
 > **Audience**: Codex (repo context)  
 > **Status**: Draft
 
@@ -88,7 +88,29 @@ Code refs:
 - `livekit_agent/openai_realtime_agent.py` (`_queue_realtime_user_text_turn`, `_maybe_handle_realtime_user_text_turn`)
 - Tuning env vars: `REALTIME_TRANSCRIPT_DEBOUNCE_S`, `REALTIME_TRANSCRIPT_POST_SILENCE_S`, `REALTIME_TRANSCRIPT_MAX_WAIT_S`
 
-### C) Turn detection / interruption sensitivity too aggressive
+### C) Duplicate user turns (realtime transcript + `user_input`) (repo-specific)
+**Symptom**
+- The model repeats itself, “forgets” it already has phone/name, or behaves inconsistently.
+- Session reports show the *same* user utterance added twice to chat history.
+  - Example pattern in `report.events[]`:
+    - `user_input_transcribed(is_final=true, transcript="...")`
+    - `conversation_item_added(role="user", content="...")`
+    - later (after `speech_created`): another `conversation_item_added(role="user", content="...")` with the same content.
+
+**Why**
+- LiveKit’s realtime pipeline already commits final transcripts into the chat history as a `user` message.
+- Calling `session.generate_reply(user_input="...")` also appends a `user` message to chat history.
+- If we trigger the backend-first reply loop from transcript events *and* pass `user_input`, the user turn is duplicated and the model sees it twice.
+
+**Fix (implemented 2026-02-03)**
+- When triggering a reply from a transcript-driven path, call `session.generate_reply(...)` **without** `user_input`.
+  - Keep backend guidance visible via per-turn `instructions` (and optional `chat_ctx`).
+
+Code refs:
+- `livekit_agent/openai_realtime_agent.py` (`_handle_user_text_turn`, `_handle_realtime_user_text_turn`)
+- Regression test: `livekit_agent/tests/test_openai_realtime_agent_realtime_transcript_no_user_input_when_llm_present.py`
+
+### D) Turn detection / interruption sensitivity too aggressive
 Even with the repo-level fix above, noisy environments can still cause too many interruptions.
 
 Recommended knobs:

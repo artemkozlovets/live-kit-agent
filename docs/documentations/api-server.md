@@ -1,6 +1,6 @@
 # API Server (Codex Context)
 
-> **Last Updated**: 2026-01-28  
+> **Last Updated**: 2026-02-03  
 > **Audience**: Codex (repo context)  
 > **Status**: Draft
 
@@ -20,6 +20,13 @@
 - `get_case_status` stack:
   - Orchestration + guardrails: `api_server/vapi/handlers/case_status.py`
   - Pure case state builder: `api_server/vapi/case_status.py`
+
+## State + scaling (important)
+This backend currently uses an **in-memory** per-call session store keyed by `call.id`.
+
+Implications:
+- If the backend restarts mid-call, it will “forget” prior turns and may re-ask for phone/name/address.
+- If you run **multiple replicas** without a shared store (ex: Redis) and sticky routing, different turns of the same call can hit different replicas and lose continuity.
 
 ## `POST /tools` (v2 contract)
 
