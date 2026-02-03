@@ -21,6 +21,23 @@ def handle_add_service(
     _ = database_client
     service_data = parse_tool_arguments(tool_call)
 
+    vehicle_identifier_type_raw = service_data.get("vehicle_identifier_type")
+    vehicle_identifier_raw = service_data.get("vehicle_identifier")
+    if isinstance(vehicle_identifier_type_raw, str) and isinstance(vehicle_identifier_raw, str):
+        vehicle_identifier_type = vehicle_identifier_type_raw.strip().lower()
+        vehicle_identifier = vehicle_identifier_raw.strip()
+        if vehicle_identifier_type and vehicle_identifier:
+            if vehicle_identifier_type in {"vin", "vin_number"}:
+                service_data.setdefault("vin_number", vehicle_identifier)
+            elif vehicle_identifier_type in {"unit_number", "unit"}:
+                service_data.setdefault("unit_number", vehicle_identifier)
+            elif vehicle_identifier_type in {"unit_nickname", "nickname"}:
+                service_data.setdefault("unit_nickname", vehicle_identifier)
+
+        # Reason: Keep stored service data aligned with backend expectations.
+        service_data.pop("vehicle_identifier_type", None)
+        service_data.pop("vehicle_identifier", None)
+
     # Reason: Must have at least one vehicle identifier.
     has_vehicle_id = any(
         service_data.get(key) for key in ("vin_number", "unit_number", "unit_nickname")

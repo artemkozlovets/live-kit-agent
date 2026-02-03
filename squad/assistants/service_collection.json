@@ -52,16 +52,19 @@
         "name": "add_service",
         "parameters": {
           "type": "object",
-          "required": ["service_complaint", "service_location"],
+          "required": ["vehicle_identifier_type", "vehicle_identifier", "service_complaint", "service_location"],
           "properties": {
-            "vin_number": { "type": "string", "description": "VIN (optional)" },
-            "unit_number": { "type": "string", "description": "Fleet unit number (optional)" },
-            "unit_nickname": { "type": "string", "description": "Vehicle nickname (optional)" },
+            "vehicle_identifier_type": {
+              "type": "string",
+              "enum": ["vin", "unit_number", "unit_nickname"],
+              "description": "Type of vehicle identifier provided"
+            },
+            "vehicle_identifier": { "type": "string", "description": "Vehicle identifier value (VIN, unit number, or nickname)" },
             "service_location": { "type": "string", "description": "Where the vehicle is located" },
             "service_complaint": { "type": "string", "description": "What service is needed" }
           }
         },
-        "description": "Add a service to the session for later storage."
+        "description": "Add a service to the session for later storage. Always include vehicle_identifier_type + vehicle_identifier."
       }
     },
     {

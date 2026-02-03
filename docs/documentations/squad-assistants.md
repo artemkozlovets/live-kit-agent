@@ -31,6 +31,8 @@
   - the agent’s tool LLM may try to call tools that don’t exist, or
   - parameters may be ignored/mismatched.
 - The backend derives call id from the payload (`call.id`), not from tool arguments.
+- OpenAI Realtime can reject more advanced JSON Schema features (observed: tool schema changes using `anyOf`/`minLength` caused the agent to error at session start). Prefer simple schemas (`type`, `properties`, `required`, `enum`) and model “one-of required” as an explicit `*_type` + `*_value` pair.
+- `add_service` uses `vehicle_identifier_type` + `vehicle_identifier`; the backend maps these to legacy `vin_number` / `unit_number` / `unit_nickname` in [`api_server/vapi/handlers/session.py`](../../api_server/vapi/handlers/session.py#L1).
 
 ## Related docs
 - `docs/documentations/livekit-agent.md`

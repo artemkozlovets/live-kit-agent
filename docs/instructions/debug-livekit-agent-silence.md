@@ -106,6 +106,10 @@ Likely causes:
 - Missing/invalid `OPENAI_API_KEY` (auth failure).
 - OpenAI plugin missing from the deployed environment (install `livekit-agents[openai]`).
 - Invalid `OPENAI_REALTIME_VOICE` (if set).
+- Tool schema rejected by OpenAI Realtime (example: advanced JSON Schema like `anyOf`/`oneOf`/`minLength`).
+  - Symptom: `ERROR:livekit.plugins.openai:OpenAI Realtime API returned an error` right after session start, and **no session report** is published.
+  - Confirm: temporarily enable `LK_OPENAI_DEBUG=1` (high-volume; likely contains PII) and inspect the websocket error payload.
+  - Fix: simplify schemas in `squad/assistants/*.json` (prefer `type`/`properties`/`required`/`enum`).
 
 ### B) Session closes due to participant disconnect
 Symptom in `lk agent logs`:
