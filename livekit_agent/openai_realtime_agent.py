@@ -12,7 +12,7 @@ from typing import Any
 from livekit import rtc
 from livekit.agents import Agent, ChatContext, function_tool
 
-from livekit_agent.backend_tools_client import BackendToolsClientError
+from livekit_agent.backend_tools_client import BackendToolsClientError, BookingNotConfirmedError
 from livekit_agent.tools import load_tool_schemas
 
 logger = logging.getLogger("livekit-agent.openai-realtime")
@@ -385,6 +385,7 @@ class OpenAIRealtimeAgent(Agent):
                 "Tools:\n"
                 "- Use tools to validate and save customer data (validate_phone, check_customer, register_new_customer, update_customer, etc.).\n"
                 "- When you have a phone number, call validate_phone and then check_customer. Do not claim you are \"checking\" unless you actually called the tool.\n"
+                "- Booking safety: do NOT call store_service_order until the caller has explicitly confirmed (yes/no). After a clear \"yes\", call confirm_services, then call store_service_order.\n"
                 "- Prefer saving in as few tool calls as possible once you have enough information.\n"
                 "- If the caller provides the vehicle make/model (ex: \"Ford F-150\"), save it on the service (vehicle_make/vehicle_model) so it can be stored in the database.\n"
                 "\n"
@@ -398,6 +399,7 @@ class OpenAIRealtimeAgent(Agent):
                 "- If you receive a system message containing JSON like {\"case_status\": ...}, treat it as authoritative backend guidance.\n"
                 "- If you receive a system message containing JSON like {\"tool_prefetch\": ...}, treat it as authoritative tool results.\n"
                 "- You may also receive authoritative JSON inside per-turn instructions. Treat it the same way.\n"
+                "- Only ask for fields that are explicitly listed in case_status.missing_fields. Do not re-ask for name/phone if case_status.customer already has them.\n"
                 "- The backend guidance JSON may include `customer_known_data` (PII). Use it only for tool arguments and never read it to the caller.\n"
                 "- Never answer general knowledge or trivia. If asked unrelated questions, refuse briefly and immediately redirect to roadside assistance.\n"
             ),
@@ -1104,7 +1106,12 @@ class OpenAIRealtimeAgent(Agent):
         self._last_user_turn_hook_wallclock_unix_s = time.time()
 
         user_text = getattr(new_message, "text_content", None) or ""
-        await self._handle_user_text_turn(user_text=user_text, turn_ctx=turn_ctx)
+        user_message_already_in_history = getattr(self.session, "llm", None) is not None
+        await self._handle_user_text_turn(
+            user_text=user_text,
+            turn_ctx=turn_ctx,
+            user_message_already_in_history=user_message_already_in_history,
+        )
 
     async def forward_tool(self, *, tool_name: str, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Handle local tools and forward the rest to backend `/tools` API (v2)."""
@@ -1112,15 +1119,42 @@ class OpenAIRealtimeAgent(Agent):
         if tool_name == "transfer_to_human":
             return await self._transfer_to_human()
 
-        return await self._backend.call_tool(
-            call_id=self.call_id,
-            sip_phone_number=self._sip_phone_number,
-            confirmed_callback_number=self._confirmed_callback_number,
-            assistant_variable_values=self._assistant_variable_values,
-            tool_call_id=f"tool-{uuid.uuid4().hex}",
-            tool_name=tool_name,
-            tool_arguments=tool_arguments,
-        )
+        try:
+            return await self._backend.call_tool(
+                call_id=self.call_id,
+                sip_phone_number=self._sip_phone_number,
+                confirmed_callback_number=self._confirmed_callback_number,
+                assistant_variable_values=self._assistant_variable_values,
+                tool_call_id=f"tool-{uuid.uuid4().hex}",
+                tool_name=tool_name,
+                tool_arguments=tool_arguments,
+            )
+        except BookingNotConfirmedError as exc:
+            # Reason: Booking confirmation failures are expected policy rejections. Return a structured
+            # tool result so the model can recover instead of seeing a generic "internal error".
+            return {
+                "success": False,
+                "error": str(exc) or "User has not explicitly confirmed the booking.",
+                "next_action": (
+                    "Ask the caller for an explicit yes/no confirmation. "
+                    "If yes: call confirm_services, then call store_service_order. "
+                    "If no: ask what needs to change, then call update_service_order."
+                ),
+            }
+        except BackendToolsClientError as exc:
+            logger.warning(
+                "backend tool call failed",
+                extra={
+                    "tool_name": tool_name,
+                    "error_type": type(exc).__name__,
+                },
+                exc_info=exc,
+            )
+            return {
+                "success": False,
+                "error": f"{type(exc).__name__}: {exc}",
+                "next_action": "Tell the caller there was a system issue and try again.",
+            }
 
     async def _transfer_to_human(self) -> dict[str, Any]:
         """Cold transfer the active SIP caller to a human.

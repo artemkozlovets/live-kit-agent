@@ -168,7 +168,8 @@ def build_case_status(
             if not services_confirmed:
                 missing_fields.append("confirmation")
             next_action = (
-                "All information collected. Confirm details with customer and hand off to Booking."
+                "All information collected. Give a concise recap of service + location + vehicle and ask for an explicit yes/no. "
+                "If yes: call confirm_services. If no: ask what needs to change and call update_service_order."
                 if not services_confirmed
                 else "Details confirmed. Proceed to store the service order."
             )
@@ -328,7 +329,8 @@ def build_case_status(
     else:
         services_confirmed = bool(session.get("services_confirmed", False))
         next_action = (
-            "All information collected. Confirm details with customer and hand off to Booking."
+            "All information collected. Give a concise recap of service + location + vehicle and ask for an explicit yes/no. "
+            "If yes: call confirm_services. If no: ask what needs to change and call update_service_order."
             if not services_confirmed
             else "Details confirmed. Proceed to store the service order."
         )

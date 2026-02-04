@@ -445,6 +445,9 @@ Provide:
 - **Symptom:** caller asks to transfer to a human, but the agent says it can’t / “technical issues”  
   **Likely cause:** the `transfer_to_human` tool ran but LiveKit rejected it because LiveKit Phone Numbers don’t support transfers yet  
   **Fix:** fetch the call’s session report and look for `function_tools_executed` output `{"ok": false, "error": {"code": "transfer_not_supported", ...}}`; to actually enable transfers, switch to a SIP trunk provider (ex: Twilio) with SIP REFER/PSTN transfer enabled (see `docs/documentations/realtime-human-transfer.md`)
+- **Symptom:** booking/save step fails (caller says “yes”, but nothing is saved) and session report shows tool failures like `store_service_order` with output “An internal error occurred”  
+  **Likely cause:** `store_service_order` was called before `confirm_services`, so the backend rejected it with `booking_not_confirmed` (or a backend `/tools` error occurred).  
+  **Fix:** fetch the call’s session report and inspect `function_tools_executed` for `store_service_order`. Ensure the flow is: recap service+location+vehicle → explicit yes/no → `confirm_services` → `store_service_order`. (The agent now returns a structured tool result for `booking_not_confirmed` so the model can recover instead of seeing a generic internal error.)
 - **Symptom:** Railway shows `/tools` 400 with `Invalid JSON payload`  
   **Likely cause:** a caller hit `/tools` with an empty or non-JSON body  
   **Fix:** ensure callers send a valid JSON body and include `X-TOOLS-TOKEN` (see `api_server/tools/router.py`)

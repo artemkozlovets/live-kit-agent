@@ -6,7 +6,7 @@ Avoid “echo-y” conversations where the agent repeatedly reads back the calle
 Desired behavior in this repo:
 - **Pre-booking** (`customer_intake`, `service_collection`): acknowledge briefly and ask for what’s missing.
 - **Booking** (`booking`): give **one** concise recap (**service + location + vehicle only**), then ask for an explicit **yes/no** before booking.
-- **Post-confirmation** (after “yes” / after booking is confirmed): **do not recap again**. Proceed to store the service order and finish the call.
+- **Post-confirmation** (after a clear “yes”): **do not recap again**. Call `confirm_services`, then proceed to `store_service_order` and finish the call.
 
 This aligns with the repo’s slot-filling guardrail flow: **info dump → fill session → ask only missing → confirm at end → book**.
 

@@ -103,12 +103,17 @@ Code refs:
 - If we trigger the backend-first reply loop from transcript events *and* pass `user_input`, the user turn is duplicated and the model sees it twice.
 
 **Fix (implemented 2026-02-03)**
-- When triggering a reply from a transcript-driven path, call `session.generate_reply(...)` **without** `user_input`.
-  - Keep backend guidance visible via per-turn `instructions` (and optional `chat_ctx`).
+- In realtime sessions, LiveKit/OpenAI already commit the user’s message into conversation state.
+- To avoid duplicating that message, call `session.generate_reply(...)` **without** `user_input` on turn triggers where the user message is already in history:
+  - transcript-driven fallback (`user_input_transcribed`), and
+  - `on_user_turn_completed` (when it fires).
+- Keep backend guidance visible via per-turn `instructions` (and optional `chat_ctx`).
 
 Code refs:
-- `livekit_agent/openai_realtime_agent.py` (`_handle_user_text_turn`, `_handle_realtime_user_text_turn`)
-- Regression test: `livekit_agent/tests/test_openai_realtime_agent_realtime_transcript_no_user_input_when_llm_present.py`
+- `livekit_agent/openai_realtime_agent.py` (`_handle_user_text_turn`, `_handle_realtime_user_text_turn`, `on_user_turn_completed`)
+- Regression tests:
+  - `livekit_agent/tests/test_openai_realtime_agent_realtime_transcript_no_user_input_when_llm_present.py`
+  - `livekit_agent/tests/test_openai_realtime_agent_turn_hook_no_user_input_when_llm_present.py`
 
 ### D) Turn detection / interruption sensitivity too aggressive
 Even with the repo-level fix above, noisy environments can still cause too many interruptions.

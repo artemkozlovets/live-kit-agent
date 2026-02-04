@@ -113,7 +113,9 @@ def handle_get_session_summary(
         "service_count": len(formatted_services),
         "services": formatted_services,
         "services_confirmed": session.get("services_confirmed", False),
-        "next_action": "Review services with caller. If confirmed, call store_service_order to finalize.",
+        "next_action": (
+            "Review services with caller. If the caller confirms, call confirm_services, then call store_service_order to finalize."
+        ),
     }
 
 

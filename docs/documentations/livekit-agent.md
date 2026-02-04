@@ -79,11 +79,17 @@ If we then call `session.generate_reply(user_input="...")` for the same transcri
 - unexpected re-asking for already-provided info (phone/name), and
 - faster context bloat (more unstable behavior over longer calls).
 
-**Fix:** when triggering a reply from transcript-driven paths, call `generate_reply(...)` **without** `user_input`, and pass backend guidance via per-turn `instructions`.
+This can happen from either trigger:
+- the transcript-driven fallback (`user_input_transcribed`), or
+- `on_user_turn_completed` (when it fires in a realtime session).
+
+**Fix:** for realtime sessions, call `generate_reply(...)` **without** `user_input` on turn triggers where the user message is already in history, and pass backend guidance via per-turn `instructions`.
 
 Repo refs:
 - `livekit_agent/openai_realtime_agent.py` (transcript turn path + `generate_reply` call)
-- `livekit_agent/tests/test_openai_realtime_agent_realtime_transcript_no_user_input_when_llm_present.py` (regression test)
+- Regression tests:
+  - `livekit_agent/tests/test_openai_realtime_agent_realtime_transcript_no_user_input_when_llm_present.py`
+  - `livekit_agent/tests/test_openai_realtime_agent_turn_hook_no_user_input_when_llm_present.py`
 
 ## Contract: backend tools (v2)
 - **URL:** `BACKEND_TOOLS_URL` (default ends with `/tools`)
@@ -91,6 +97,12 @@ Repo refs:
 - **Response correlation:** results match by `tool_call_id`
 
 See `docs/documentations/api-server.md` for the full `/tools` contract and failure semantics.
+
+### Booking confirmation (must-not-break)
+- The backend enforces **no booking without explicit confirmation**:
+  - `store_service_order` before confirmation returns `booking_not_confirmed` (HTTP 200, `ok=false`).
+- In the LiveKit agent, tool-call failures should return a **structured tool result** (not raise) so the model can recover instead of seeing a generic “internal error”.
+  - Regression: `livekit_agent/tests/test_openai_realtime_agent_forward_tool_booking_not_confirmed.py`
 
 ## Configuration (env vars)
 
